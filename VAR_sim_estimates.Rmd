@@ -3,11 +3,12 @@ title: "Implementation Multiple Time Series Analysis"
 author: "Jacopo Lussetti"
 date: "2025-04-02"
 header-includes:
+  - \usepackage{amsmath}
+  - \DeclareMathOperator{\VEC}{vec}
   - \usepackage{bm}  # Bold math symbols
 output:
   pdf_document: default
-  html_document:
-    df_print: paged
+  html_document: default
 bibliography: reference.bib
 ---
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -15,7 +16,7 @@ bibliography: reference.bib
 library(MASS)
 library(zoo)
 library(stats)
-
+library(rockchalk)
 ```   
 
 ## Companion Matrix function 
@@ -71,11 +72,11 @@ $$
 After evaluating the conditions for stability, we proceed then defining the 
 formula to compute contrivances. Th
 
-$$
+
 \begin{equation}
-  vec \ \Gamma_Y(0)= (I_{(Kp)^2}- \mathbf{A} \otimes \mathbf{A})^{-1}vec \ \Sigma_U
+  \VEC \ \Gamma_Y(0)= (I_{(Kp)^2}- \mathbf{A} \otimes \mathbf{A})^{-1} \VEC \ \Sigma_U
 \end{equation}
-$$
+
 
 ```{r}
 
@@ -108,11 +109,11 @@ autocov_fun<-function(A, Sigma_u,p=1){ # A for high-order var is combined matrix
 ## Equilibrium Points
 
 Equilibrium points are defined by formula 2.1.10 at page 16
-$$
+
 \begin{equation}
   \mathbf{\mu}:= E(Y_t)= (I_{Kp}-\mathbf{A})^{-1} \mathbf{\nu}
 \end{equation}
-$$
+
 ```{r}
 equilibrium<-function(A, nu){
   #check stability condition
@@ -252,7 +253,7 @@ est_autocov <- function(y_t, Y, Z, T, p=1){
 # Test A
 
 
-```{r}
+```{r, fig.width=7, fig.height=5}
 set.seed(123)
   p<-1
   A<-matrix(c(0.5, 0.1, 0., 0., 0.1, 0.2, 0., 0.3, 0.3), nrow=3, ncol=3)
@@ -309,43 +310,42 @@ print(diff_Sigma_u)
 # Test B
 
 Kp-dimensional representation for VAR(p) is defined as following:
-$$
-\begin{aligned}
-&Y_t=\nu+\mathbf{A} Y_{t-1}+U_t\\
-&\text { can be defined, where }\\
-&\begin{aligned}
-& Y_t:= {\left[\begin{array}{c}
+
+\begin{align*}
+Y_t &= \nu + \mathbf{A} Y_{t-1} + U_t \\
+\text{where} \quad
+Y_t &:= 
+\begin{bmatrix}
 y_t \\
 y_{t-1} \\
 \vdots \\
 y_{t-p+1}
-\end{array}\right], \quad \nu:=\left[\begin{array}{c}
+\end{bmatrix}, \quad
+\nu :=
+\begin{bmatrix}
 \nu \\
 0 \\
-(K p \times 1)
-\end{array}\right], } \\
-& \mathbf{A}:=\left[\begin{array}{ccccc}
+\text{($K p \times 1$ zeros)}
+\end{bmatrix}, \\
+\mathbf{A} &:=
+\begin{bmatrix}
 A_1 & A_2 & \ldots & A_{p-1} & A_p \\
-0
-\end{array}\right] \\
-&\left. \begin{array}{ccccc}
 I_K & 0 & \ldots & 0 & 0 \\
-0 & I_K & & 0 & 0 \\
+0 & I_K & \ldots & 0 & 0 \\
 \vdots & & \ddots & \vdots & \vdots \\
 0 & 0 & \ldots & I_K & 0
-\end{array}\right], \quad U_t:=\left[\begin{array}{c}
+\end{bmatrix}, \quad
+U_t :=
+\begin{bmatrix}
 u_t \\
 0 \\
 \vdots \\
 0
-\end{array}\right] .
-\end{aligned}
-\end{aligned}
-
-$$
+\end{bmatrix}
+\end{align*}
 
 We first start with the simulation
-```{r}
+```{r, fig.width=7, fig.height=5}
 # Define parameters for Test B
 set.seed(123)
 p_B <- 2  # Number of lags for VAR(p)
@@ -419,4 +419,5 @@ print(diff_Sigma_u_B)
 
 ```
 # Refenence 
-[@Helmut2005]
+
+@Helmut2005

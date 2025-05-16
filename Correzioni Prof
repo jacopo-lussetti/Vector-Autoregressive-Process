@@ -1,0 +1,481 @@
+library(MASS)
+library(zoo)
+library(expm)
+
+#Companion Matrix
+  comp_mtrx <- function(AA){
+    # AA is a K x Kp matrix, so we are able to derive p in the following way
+    K <- nrow(AA)
+    p <- ncol(AA) / K
+    
+    # Create the empty companion matrix Kp x Kp
+    C <- matrix(0, nrow = K * p, ncol = K * p)
+    
+    # We extract the singular coefficient matrix
+    # Each A_i has dimension K x K
+    for (i in 1:p) {
+      C[1:K, ((i - 1) * K + 1):(i * K)] <- AA[, ((i - 1) * K + 1):(i * K)]
+    }
+    
+    # Add identity matrices on the diagonal
+    for (i in 2:p) {
+      C[((i - 1) * K + 1):(i * K), ((i - 2) * K + 1):((i - 1) * K)] <- diag(K)
+    }
+    
+    return(C)
+  }
+
+## Questa implementazione funziona anche quando p=1
+comp_mtrx <- function(AA){
+    ## AA is a K x Kp matrix, so we are able to derive p in the following way
+    K <- nrow(AA)
+    Kp <- ncol(AA)      
+    p <- Kp/K
+    
+    # Create the empty companion matrix Kp x Kp
+    C <- matrix(0, nrow=Kp, ncol=Kp)
+
+    C[1:K,] <- AA
+    
+    # Add ones on the K-th sub-diagonal
+    if (p>1)
+        C[(K+1):Kp, 1:(Kp-K)] <- diag(Kp - K)
+    return(C)
+}
+
+
+
+  #Formula 2.1.10 page 16 textbook
+  autocov<-function(C, Sigma_u, h=5, max_lag=100){# truncate the sum to a large enough lag
+    K <- nrow(Sigma_u)
+    Kp <- nrow(C)
+    p <- Kp/K
+    sum_cov <- matrix(0, nrow = Kp, ncol = Kp)
+    
+#   if(p==1){
+#    for (i in 0:max_lag) {
+#      A_hi <- C %^% (h + i) # exponential matrix from library expm 
+#      A_i  <- C %^% i
+#      term <- A_hi %*% bdiag(Sigma_u, matrix(0, Kp - K, Kp - K))  %*% t(A_i) 
+#      #bdiag expand covariance matrix
+#      sum_cov <- sum_cov + term
+#      }
+#    }else {
+      # Extend Sigma_u to match the dimensions of the companion matrix
+      # => Questo funziona anche quando p=1 (non serve duplicare il codice)
+      Sigma_u_ext <- matrix(0, nrow = Kp, ncol = Kp)
+      Sigma_u_ext[1:K, 1:K] <- Sigma_u
+      
+      for (i in 0:max_lag) {
+        A_hi <- C %^% (h + i)
+        A_i  <- C %^% i
+        term <- A_hi %*% Sigma_u_ext %*% t(A_i)
+        sum_cov <- sum_cov + term
+      }
+#    }
+    
+    return(sum_cov[1:K, 1:K])
+  }
+
+  #Formula 2.1.10 page 16 textbook
+  autocov <- function(C, Sigma_u, h=5, max_lag=100){# truncate the sum to a large enough lag
+    K <- nrow(Sigma_u)
+    Kp <- nrow(C)
+    p <- Kp/K
+    sum_cov <- matrix(0, nrow = Kp, ncol = Kp)
+    
+    # Extend Sigma_u to match the dimensions of the companion matrix
+    Sigma_u_ext <- matrix(0, nrow = Kp, ncol = Kp)
+    Sigma_u_ext[1:K, 1:K] <- Sigma_u
+
+    # Inizializza A_i=C^0  e  A_hi=C^h
+    # Calcola la matrice C^h
+    A_i = diag(Kp)
+    A_hi = diag(Kp)  # Matrice identita'
+    for (i in 1:h) { A_hi <- A_hi %*% C }
+
+    for (i in 0:max_lag) {
+        term <- A_hi %*% Sigma_u_ext %*% t(A_i)
+        sum_cov <- sum_cov + term
+        A_hi <- A_hi %*% C
+        A_i <- A_i %*% C
+    }
+    return(sum_cov[1:K, 1:K])
+  }
+
+  # Ancora meglio
+  autocov <- function(C, Sigma_u, h=5, max_lag=100){# truncate the sum to a large enough lag
+    K <- nrow(Sigma_u)
+    Kp <- nrow(C)
+    p <- Kp/K
+    sum_cov <- matrix(0, nrow = Kp, ncol = Kp)
+    
+    # Extend Sigma_u to match the dimensions of the companion matrix
+    Sigma_u_ext <- matrix(0, nrow = Kp, ncol = Kp)
+    Sigma_u_ext[1:K, 1:K] <- Sigma_u
+
+    # Inizializza A_i=C^0 
+    A_i = diag(Kp)
+
+    # Calcola la matrice di covarianza (h=0)
+    for (i in 0:max_lag) {
+        term <- A_i %*% Sigma_u_ext %*% t(A_i)
+        sum_cov <- sum_cov + term
+        A_i <- A_i %*% C
+    }
+
+    # Moltiplica la matrice di covarianza per C^h
+    for (i in 1:h) {
+        sum_cov <- C %*% sum_cov
+    }
+    
+    return(sum_cov[1:K, 1:K])
+  }
+
+var_stationary_mean <- function(AA, nu, Sigma_u) {
+    K <- nrow(AA)
+    Kp <- ncol(AA)
+
+    C <- comp_mtrx(AA) # form  the companion matrix of the var(p) process
+    ext_nu <- rep(0,Kp)
+    ext_nu[1:K] <- nu
+    return(solve(diag(Kp) - C, ext_nu))
+}
+
+## Ancora meglio: usare la formula in 2.1.39 (cfr. 2.1.32) e quindi moltiplicare per C^h
+## - non richiede una serie (somma di infiniti termini)
+## - moltiplicare per C^h non è necessario quando h<p. Infatti, i blocchi di \Gamma_Y(0)
+## contenegono let matrici di autocovarianza per i lag fino ad h=p-1
+
+## => Compito per venerdì implementare e capire questa formula
+
+
+  # VAR(p) Simulation function
+  var_sim <- function(AA, nu_int, Sigma_u, nSteps, y0, h=5, max_lag=100) {
+    K <- nrow(Sigma_u)
+    Kp <- ncol(AA)
+    p <- Kp/K
+        
+    if (p > 1) {
+      C <- comp_mtrx(AA) #compute companion matrix for var(p) for the Kp-dimensional var(1)
+      y_t <- matrix(0, nrow =  nSteps, ncol=Kp) #trajectories matrix nSteps x Kp
+      y_t[ 1,1:Kp] <- y0 #add initial value to initiate the simulation
+      u_t <- mvrnorm(n = nSteps, mu = rep(0, K), Sigma = Sigma_u) #assuming that 
+      #residuals follow a multinomial normal distribution
+      noise <- matrix(0, nrow = nSteps, ncol = Kp) #U_t=[u_t 0 .... 0]
+      noise[, 1:K] <- u_t
+      
+      # Extend nu for p lags and nSteps
+      nu <- matrix(0, nrow = nSteps, ncol = K)
+      for (t in 1:nSteps) {
+        nu[t, ] <- nu_int  
+      }
+      
+      for (t in 2:nSteps) {
+        y_t[t, ] <- c(nu[t, ], rep(0, Kp - K)) + C %*% y_t[t - 1, ] + noise[t, ]
+      }
+      
+      I_Kp <- diag(Kp)
+      ext_nu <- c(nu_int, rep(0, Kp - K))  
+      equilibrium<-solve(I_Kp- C) %*% ext_nu # formula 2.1.10 page 16
+      cov_coef<-autocov(C, Sigma_u, h,max_lag)
+      
+    } else {
+      y_t <- matrix(0, nrow = nSteps, ncol = K)
+      y_t[1, ] <- y0
+      noise <- mvrnorm(n = nSteps, mu = rep(0, K), Sigma = Sigma_u)
+      for (t in 2:nSteps) {
+        y_t[t, ] <- nu_int + A %*% y_t[t - 1, ] + noise[t, ]    ## Perchè A e non AA?
+          
+      }      
+      equilibrium <- solve(diag(K) - AA) %*% nu_int
+      cov_coef <- autocov(AA, Sigma_u, h = h)
+    }
+    
+    Steps <- 1:nSteps
+    y_t <- zoo(y_t, Steps)  # Le serie laggate servono internamente, non devono essere ritornate
+    # create a list to extract trajectories, equilibrium and autocovariances
+    return(list(
+      y_t=y_t,
+      equilibrium=equilibrium, 
+      autocov=cov_coef
+    ))
+  }
+
+
+## VAR(p) Simulation function
+## Versione aggiustata
+  var_sim <- function(AA, nu, Sigma_u, nSteps, y0, h=5, max_lag=100) {
+    K <- nrow(Sigma_u)
+    Kp <- ncol(AA)
+    p <- Kp/K
+        
+    if (p > 1) {
+        C <- comp_mtrx(AA) #compute companion matrix for var(p) for the Kp-dimensional var(1)
+    } else {
+        C <- AA   # Risparmio infinitesimo nel non chiamare la funzione comp_mtrx
+    }
+    y_t <- matrix(0, nrow =  nSteps, ncol=Kp) #trajectories matrix nSteps x Kp
+    y_t[1, 1:Kp] <- y0 #add initial value to initiate the simulation
+    u_t <- mvrnorm(n = nSteps, mu = rep(0, K), Sigma = Sigma_u) #assuming that 
+    #residuals follow a multivariate normal distribution
+    noise <- matrix(0, nrow = nSteps, ncol = Kp) #U_t=[u_t 0 .... 0]
+    noise[, 1:K] <- u_t
+      
+    nu_ext <- rep(0, Kp)
+    nu_ext[1:K,] <- nu
+    
+    for (t in 2:nSteps) {
+      y_t[t, ] <- nu_ext + C %*% y_t[t - 1, ] + noise[t, ]
+    }
+      
+    I_Kp <- diag(Kp)
+    ext_nu <- c(nu_int, rep(0, Kp - K))  
+    equilibrium <- solve(I_Kp- C) %*% ext_nu # formula 2.1.10 page 16
+    equilibrium <- equilibrium[1:K]
+    cov_coef <- autocov(C, Sigma_u, h,max_lag)
+
+    y_t <- zoo(y_t[,1:K], 1:nSteps)  # Le serie laggate servono internamente, non devono essere ritornate
+    # create a list to extract trajectories, equilibrium and autocovariances
+    return(list(
+      y_t=y_t,
+      equilibrium=equilibrium, 
+      autocov=cov_coef
+    ))
+  }
+
+## Versione che spreca meno memoria
+  var_sim <- function(AA, nu, Sigma_u, nSteps, y0, h=5, max_lag=100) {
+    K <- nrow(Sigma_u)
+    Kp <- ncol(AA)
+    p <- Kp/K
+        
+    if (p > 1) {
+        C <- comp_mtrx(AA) # form the  companion matrix of the var(p) process
+    } else {
+        C <- AA  
+    }
+    y_t <- matrix(0, nrow =  nSteps, ncol=Kp) #trajectories matrix nSteps x Kp
+    y_t[1, 1:Kp] <- y0 #add initial value to initiate the simulation
+    noise <- mvrnorm(n = nSteps, mu = rep(0, K), Sigma = Sigma_u) #assuming that 
+    #residuals follow a multivariate normal distribution    
+    
+    for (t in 2:nSteps) {
+        y_t[t, ] <- C %*% y_t[t-1, ]
+        y_t[t, 1:K] <- y_t[t, 1:K] + nu + noise[t,]
+    }
+      
+    I_Kp <- diag(Kp)
+    ext_nu <- c(nu, rep(0, Kp - K))  
+    equilibrium <- solve(I_Kp - C) %*% ext_nu # formula 2.1.10 page 16
+    equilibrium <- equilibrium[1:K]
+    cov_coef <- autocov(C, Sigma_u, h,max_lag)
+
+    y_t <- zoo(y_t[,1:K], 1:nSteps)  # Le serie laggate servono internamente, non devono essere ritornate
+    # create a list to extract trajectories, equilibrium and autocovariances
+    return(list(
+      y_t=y_t,
+      equilibrium=equilibrium, 
+      autocov=cov_coef
+    ))
+  }
+
+
+
+  #eigenvalues 
+  
+  ## eigenvalues of companion matrix & check on stability condition 
+  ## Input can be both compact matrix or companion matrix
+  var_roots<-function(AA){
+    if(nrow(AA)==ncol(AA)){  # matrix is squared
+      C<-AA  
+    }else{
+      C<-comp_mtrx(AA) # transform form compact matrix into companion matrix 
+    }
+    eig<-eigen(C)$values
+    if(any(Mod(eig)>=1)){   # Qui le parentesi erano sbagliate
+      message("Trajectories are not stable")
+    }else{
+      message("Trajectories are stable")
+    }  
+  return(eig)
+  }
+  
+  
+  
+
+
+## Multivariate Least Squares Estimations
+## 1. L'input devono essere p serie storiche: y_t : n x p
+## 2. La procedure di stima non conosce i parametri originali 
+##    (nella realtà se devo stimare qualcosa non ne conosco i valori)
+##    A e nu non possono essere parametri di input
+##    I controlli sulla precisione della stima vanno eseguiti all'esterno
+##    di questa funzione
+## 3. nSteps e K sono ridondanti: sono le dimensioni di y_t
+  estimator<-function(nSteps, p, K, y_t, A, nu){
+    T<-nSteps-p
+    Z<-matrix(0, nrow=(K*p +1), ncol=T)
+    Y<-matrix(0, nrow= K, ncol=T)
+    
+    Z[1,]<-rep(1,T) # Fill the first row of Z with 1 for the intercept
+    if(p>1){
+      
+      for(i in 1:p){
+        row_start<-2+(i-1)*K
+        row_end<-1+ i*K
+        Z[row_start:row_end,]<-t(y_t[(p+1-i):(nSteps-i), 1:K])
+        
+      }
+    }else{
+      Z[2:(K + 1), ] <- t(y_t[1:(nSteps - 1), 1:K])
+    }
+    Y<-t(y_t[(p+1):nSteps,1:K])
+    #Estimator
+    B_hat<- Y %*% t(Z)  %*% solve(Z %*%t(Z)) #modified formula 3.2.10 page 72
+    B_real<-cbind(nu, A) # compare with original parameters 
+    Accuracy<-B_hat-B_real # compare 
+    
+    return(list(
+      Estimates= B_hat,
+      Accuracy= Accuracy
+    ))
+  }
+
+## Multivariate Least Squares Estimations
+## Versione aggiustata
+estimator<-function(y_t, p){
+    nObs <- nrow(y_t)
+    K <- ncol(y_t)
+    T <- nObs - p
+
+    # Setup the rhs
+    Y <- y_t[(p+1):nObs,]
+
+    # Setup the regressor matrix
+    Z <- matrix(0, nrow=T, ncol=(K*p +1))
+    Z[1,] <- 1    # Fill the first row of Z with 1 for the intercept
+    for(i in 1:p){
+        col_start <- 2 + (i-1)*K
+        col_end <- 1 + i*K
+        Z[, col_start:col_end] <- y_t[(p+1-i):(nObs-i),]
+    }
+
+    # Estimator
+    ## B_hat <- solve(t(Z) %*% Z) %*% (t(Z)%*% Y) # formula 3.2.10 page 72
+    ## Sarebbe meglio non invertire delle matrici e quindi utilizzare il seguente metodo:
+    B_hat <- solve(t(Z) %*% Z, t(Z) %*% Y)
+    B_hat <- t(B_hat)
+
+    ## Sarebbe ancor meglio utilizzare lsfit o qr e qr.coef per risolvere il problema dei
+    ## minimi quadrati senza dover formare la matrice Z'Z
+       
+    return(list(nu=B_hat[,1], AA=B_hat[,-1]))
+  }
+
+
+
+
+
+
+
+  #Test A 
+  set.seed(123)
+  p<-1
+  A<-matrix(c(0.5, 0.1, 0., 0., 0.1, 0.2, 0., 0.3, 0.3), nrow=3, ncol=3)
+  nu<-matrix(c(0.05, 0.02, 0.04), nrow=3)
+  Sigma_u <- matrix(c(1.0, 0.2, 0.3, 0.2, 2.0, 0.5, 0.3, 0.5, 3.0), nrow = 3, ncol = 3)
+  nSteps <- 200
+  y0 <- matrix(c(0.1, -0.1, 0.2),ncol=ncol(A))
+  
+  y_t<- var_sim(A, nu,Sigma_u, nSteps, y0)
+  plot(y_t$y_t, main = "VAR(1) Simulation", xlab = "Time", ylab = "y values", col = 1:3, lty = 1)
+  #we compute roots 
+  print(eigen(A, only.values = TRUE)$values)
+  
+  #Multivariate Least Squares Estimations 
+  
+  #Test A 
+  est <- estimator(y_t$y_t, p)
+  print(est$nu - nu)
+  print(est$AA - A)
+
+
+
+#scaling initial covariance matrix
+A_scaled <- A
+Sigma_scaled <- 0.01 * Sigma_u 
+y_t_scaled <- var_sim(A_scaled, nu, Sigma_scaled, nSteps, y0)
+est_scaled <- estimator(y_t_scaled$y_t, p)
+print(est_scaled$nu - nu)
+print(est_scaled$AA - A_scaled)
+
+
+#Test B
+# Define initial matrices
+
+
+set.seed(123)
+p_B <- 2  # Number of lags for VAR(p)
+nSteps_B <- 100
+K_B <- 2  # Number of variables (size of y_t)
+Sigma_u_B <- matrix(c(2, 0.3, 0.3, 3), nrow = 2, ncol = 2)
+y0_B <- c(0.5, 2, 1, 5) 
+nu_int_B <- matrix(c(0.5, 0.9), nrow = 2)
+
+A_1 <- matrix(c(0.5, 0.4, 0.1, 0.5), nrow = 2, ncol = 2)
+A_2 <- matrix(c(0, 0.25, 0, 0), nrow = 2, ncol = 2)
+AA <- cbind(A_1, A_2)
+
+# Create the companion matrix
+A_comp = comp_mtrx(AA)
+roots = var_roots(AA)
+
+eigenvalues <- eigen(Sigma_u_B, symmetric=TRUE, only.values=TRUE)$values
+if (any(eigenvalues <= 1e-8)) {
+  stop("Covariance Matrix is not positive definite")
+} else {
+  print("Covariance Matrix is positive definite")
+}
+
+
+Test_B <- var_sim(AA, nu_int_B, Sigma_u_B, nSteps_B, y0_B, h=5, max_lag=100)
+plot(Test_B$y_t[, 1], type = "l", col = "red", lty = 1, xlab = "Time", ylab = "Values",
+     main = "VAR(2) Simulation", xlim = c(1, nSteps_B), ylim = range(Test_B))
+lines(Test_B$y_t[, 2], col = "blue", lty = 1)
+# Add legend to differentiate the lines
+legend("topright", legend = c("y_1", "y2"), col = c("red", "blue"), lty = 1, cex = 0.8)
+
+
+
+
+#Multivariate Least Squares Estimations 
+
+
+#Test B
+## Estimator
+Est_B <- estimator(Test_B$y_t, p_B)
+print(Est_B$nu - nu_int_B)
+print(Est_B$AA - AA)
+
+
+## Scale it
+Sigma_B_scaled <- 0.01 * Sigma_u_B
+Test_B_scaled <- var_sim(AA, nu_int_B, Sigma_B_scaled, nSteps_B, y0_B, h=5, max_lag=100)
+
+plot(Test_B_scaled$y_t[, 1], type = "l", col = "red", lty = 1, xlab = "Time", ylab = "Values",
+     main = "VAR(2) Simulation", xlim = c(1, nSteps_B), ylim = range(Test_B))
+lines(Test_B_scaled$y_t[, 2], col = "blue", lty = 1)
+
+#MLSE
+
+Est_B_scaled <- estimator(Test_B_scaled$y_t, p_B)
+print(Est_B_scaled$nu - nu_int_B)
+print(Est_B_scaled$AA - AA)
+
+
+## DA fare:
+## 1. Simulazione deve solo fare simulazione (non calcolo autocovarianza o valori di equilibrio)
+## 2. Implementare il calcolo della autocovarianza con la formula 2.1.39 (non è asintotica)
+## 3. Aggiungere la stima della matrice di covarianza Sigma: 3.2.18 e 3.2.19
+
