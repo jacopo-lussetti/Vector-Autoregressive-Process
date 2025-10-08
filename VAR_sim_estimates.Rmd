@@ -7,8 +7,8 @@ header-includes:
   - \DeclareMathOperator{\VEC}{vec}
   - \usepackage{bm}  # Bold math symbols
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #install required packages
@@ -560,11 +560,12 @@ We try with default cross-validation from glmnet
 cv_fit <- cv.glmnet(
   x = as.matrix(Z),
   y = as.matrix(Y),
-  family = "mgaussian"  # <-- tell glmnet it's multivariate
+  family = "mgaussian"  # var us a mutlivariate regression
 )
 
 plot(cv_fit)
-best_lambda_2 <- cv_fit$lambda.min
+best_lambda_2 <- cv_fit$lambda.1se # lambda.min brings results that are 
+#far not optimal, and have higher type I error
 best_lambda_2
 ```
 ```{r}
@@ -596,12 +597,7 @@ A_hat_matrix_2
 ```
 Now we check 
 
-\begin{center}
-\begin{tabular}{c|c|c|c|c}
-   Lasso Regression & Type I & Type II & Recall & Precision & F1
-   $\text{Lasso}_{\lambda=0.002}$ 
-\end{tabular}
-\end{center}
+
 ```{r}
 
 # --- Support function
@@ -648,7 +644,8 @@ results <- data.frame(
 )
 results
 ```
-
+From results we can see that using the largest lambda s.t.  the error is within one standard error of the minimum (lambda.1se)
+gives better results in terms of type I error, precision and F1 score.
 
 ## Monte Carlo Simulation
 ```{r}
@@ -670,14 +667,18 @@ error_function <- function(tol, coef, tr_coef){  # coef = A_hat, tr_coef = A_tru
   
   data.frame(TypeI = FPR, TypeII = FNR, Recall = Rec, Precision = Prec, F1 = F1)
 }
-
-
-MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100, base_seed = 123, 
-                     T_sim = 1000, tol = 1e-3) {
+  
+  
+MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100, 
+                     base_seed = 123, T_sim = 1000, tol = 1e-3) {
 
   seeds <- base_seed + seq_len(nrep) - 1
 
-  A_list <- vector("list", nrep)  # store true A per replication (if you want)
+  # storage
+  A_list     <- vector("list", nrep)   # store true A per replication
+  Ahat_list  <- vector("list", nrep)   # store estimated A_hat
+  nu_hat_list <- vector("list", nrep)  # store A_hat - A_true per replication
+  
   results_comb <- data.frame(
     TypeI     = numeric(nrep),
     TypeII    = numeric(nrep),
@@ -689,60 +690,69 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100, base_seed = 
   for (b in seq_len(nrep)) {
     set.seed(seeds[b])
 
-    # 1) draw a stable sparse A (your A_sim needs K as first arg)
+    # (1) draw a stable sparse A
     A_true <- A_sim(K, spar = spar, sd = sd, max_tries = max_tries)
 
-    # 2) simulate VAR(1)
-    sigma_var <- diag(1, K, K)                 # noise covariance (identity)
-    nu_var    <- rep(nu, length.out = K)       # use the 'nu' argument
+    # (2) simulate VAR(1)
+    sigma_var <- diag(1, K, K)
+    nu_var    <- rep(nu, length.out = K)
     y_0       <- rep(0, K)
-
     var_1 <- var_sim(AA = A_true, nu = nu_var, Sigma_u = sigma_var, 
                      nSteps = T_sim, y0 = y_0)
 
-    # 3) design matrices Z = y_{t-1}, Y = y_t  (drop NA instead of using lag)
-    Y <- coredata(var_1)[-1, , drop = FALSE]
-    Z <- coredata(var_1)[-nrow(var_1), , drop = FALSE]
+    # (3) create lag matrices
+    Y <- coredata(var_1)[-1, ]          # y_t
+    Z <- coredata(var_1)[-nrow(var_1),] # y_{t-1}
 
-    # 4) CV to pick lambda
+    # (4) pick lambda via CV
     cv_fit <- cv.glmnet(x = as.matrix(Z), y = as.matrix(Y), family = "mgaussian")
-    lam <- cv_fit$lambda.min
+    lam <- cv_fit$lambda.1se
 
-    # 5) fit at chosen lambda and reconstruct A_hat
-    fit_best   <- glmnet(x = as.matrix(Z), y = as.matrix(Y), family = "mgaussian", lambda = lam)
-    coef_list  <- coef(fit_best)                 # list length K
-    A_est      <- matrix(NA_real_, K, K)
-
-    for (i in 1:K) {
-      ci <- as.matrix(coef_list[[i]])            # (Intercept + K lag terms)
-      A_est[i, ] <- ci[rownames(ci) != "(Intercept)", 1]  # drop intercept
+    # (5) fit model and extract A_hat
+    fit_best  <- glmnet(x = as.matrix(Z), y = as.matrix(Y), 
+                        family = "mgaussian", lambda = lam)
+    coef_list <- coef(fit_best)
+    
+    A_est <- matrix(NA_real_, K, K)
+    for (i in seq_len(K)) {
+      ci <- as.matrix(coef_list[[i]])[-1, 1]   # drop intercept
+      A_est[i, ] <- ci
     }
 
-    # 6) metrics for this replication
-    res_b <- error_function(tol = tol, coef = A_est, tr_coef = A_true)  # NOTE: coef = A_hat, tr = A_true
+    # (6) compute difference (nu_hat = bias)
+    nu_hat <- A_est - A_true
+
+    # (7) metrics
+    res_b <- error_function(tol = tol, coef = A_est, tr_coef = A_true)
     results_comb[b, ] <- res_b[1, ]
 
-    # (optional) keep the true A
-    A_list[[b]] <- A_true
+    # store
+    A_list[[b]]     <- A_true
+    Ahat_list[[b]]  <- A_est
+    nu_hat_list[[b]] <- nu_hat
   }
 
-  # return everything you need
+  # summarize
+  summary_df <- data.frame(
+    metric = names(results_comb),
+    mean   = sapply(results_comb, mean, na.rm = TRUE),
+    sd     = sapply(results_comb, sd,   na.rm = TRUE),
+    se     = sapply(results_comb, function(x) sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x))))
+  )
+
+  # return
   list(
     results = results_comb,
-    summary = data.frame(
-      metric = names(results_comb),
-      mean   = sapply(results_comb, mean, na.rm = TRUE),
-      sd     = sapply(results_comb, sd,   na.rm = TRUE),
-      se     = sapply(results_comb, function(x) sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x))))
-    ),
-    A_list = A_list,
-    seeds  = seeds
+    summary = summary_df,
+    A_true  = A_list,
+    A_hat   = Ahat_list,
+    nu_hat  = nu_hat_list,
+    seeds   = seeds
   )
 }
-out <- MC_var_1(K = 5, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
-out$summary
 
-
+  out_5 <- MC_var_1(K = 5, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+  out_5$summary
 ```
 # Increasing number of K
 
