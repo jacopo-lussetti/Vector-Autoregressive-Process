@@ -7,16 +7,24 @@ header-includes:
   - \DeclareMathOperator{\VEC}{vec}
   - \usepackage{bm}  # Bold math symbols
 output:
-  pdf_document: default
   html_document: default
-bibliography: reference.bib
+  pdf_document: default
 ---
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #install required packages
-library(MASS)
-library(zoo)
-library(stats)
-library(rockchalk)
+packages <- c("MASS", "zoo", "stats", "rockchalk", "glmnet", "vars", "knitr")
+
+for (pckg in packages) {
+  if (!require(pckg, character.only = TRUE)) {
+    install.packages(pckg)
+    library(pckg, character.only = TRUE)
+  } else {
+    library(pckg, character.only = TRUE)
+  }
+}
+
+
+
 ```   
 
 ## Companion Matrix function 
@@ -418,6 +426,337 @@ print(diff_Sigma_u_B)
 
 
 ```
-# Refenence 
 
-@Helmut2005
+# VAR(1) simulation with sparese coefficient Matrix
+
+\begin{enumerate}
+  \item \textbf{VAR(1) Simulation:} \\
+  Generate data from the process
+  \[
+    y_t = A y_{t-1} + u_t, \quad u_t \sim \mathcal{N}(0, \sigma^2 I).
+  \]
+  where A is a lower triangular matrix with sparsity on the top right. 
+  \item \textbf{Estimation via LASSO:} \\
+  Apply LASSO regression to estimate the autoregressive matrix $A$ from the simulated data through R funtion \textit{glmnet}.
+  \item \textbf{Optimisation of the tuning parameter} \\
+    Through cross-validation or information criterion, and we compare strategies
+    \item  \textbf{Monte Carlo Repetition}
+  \item \textbf{Evaluation of Errors:} \\
+  compute Type I and Type II error rates in detecting zero vs.~nonzero coefficients.
+  \item \textbf{Increase dimension}\\
+  We try larger matrices by increasing K, and we observe how LASSO’s performance changes as dimension increases.
+\end{enumerate}
+
+## VAR(1) Simulation
+
+```{r}
+set.seed(1234)
+stab_test <- function(kp, A, tol = 1e-8)
+{
+  if (!is.matrix(A) || nrow(A) != ncol(A)) {
+    stop("The matrix is not square")
+  }
+  eig <- eigen(A, only.values = TRUE)$values  # computing the eigenvalues
+  
+  for (i in 1:length(eig)) {     
+    if (Mod(eig[i]) >= 1 - tol) { # Mod also handles complex numbers
+      return(FALSE)               # <-- fixed typo "returm"
+    }
+  }
+  return(TRUE)
+}
+
+
+A_sim <- function(K, spar, sd, max_tries = 1000){
+  tries <- 0 
+  repeat{
+    A <- matrix(0L, K, K)
+    idx_up <- which(upper.tri(A))
+    n_up   <- length(idx_up)
+
+    if (n_up > 0) {
+      A[idx_up] <- rnorm(n_up, mean = 0, sd = sd)   #fill the upper 
+  #triangle with r.v. from a normal distribution
+  #cancel a certain percentage of the elements
+      nmiss <- round(n_up * spar)
+      if (nmiss > 0) { # add sparsity
+        zero_idx <- sample(idx_up, nmiss, replace = FALSE)
+        A[zero_idx] <- 0
+      }
+    }
+
+    # check whether the model is stable (INSIDE the repeat loop)
+    if (stab_test(K, A) == TRUE) return(A)
+
+    tries <- tries + 1
+    if (tries >= max_tries) {
+      stop("Could not generate a stable A within max_tries.")
+    }
+  }
+}
+
+#now we generate a stable upper triangle coef matrix with sparsity 
+K <- 5 
+sd_var<-0.1
+A <- A_sim(K, spar = 0.3, sd = sd_var, max_tries = 10) # moderate sparsity, modest sd A
+stab_test(K,A)
+```
+Now we are able to generate a VAR(1) from the function specified at page 3
+
+```{r}
+
+sigma_var<- diag(1,5,5)* sd_var
+nu_var <- rep(1, K)  
+y_0 <- rep(0, K)  
+T_sim<-10000
+var_1<- var_sim(AA=A,nu=nu_var,Sigma_u=sigma_var, nSteps=T_sim, y0=y_0 )
+```
+
+
+# Estimation via LASSO
+
+In this step we will apply lasso regression by applying the packages \textit{glmnet}
+
+```{r}
+
+
+# Build lagged design (Z) and aligned response (Y)
+Z <- coredata(lag(var_1, k = -1))   # predictors y_{t-1}
+Y_full <- coredata(var_1)                # responses  y_t
+
+# Drop first row to align (remove the NA created by lag)
+Y <- Y_full[-1, , drop = FALSE]
+
+# If univariate, coerce to matrix to allow 2D subsetting later
+if (is.null(dim(Z))) Z <- matrix(Z, ncol = 1)
+if (is.null(dim(Y))) Y <- matrix(Y, ncol = 1)
+
+# Chronological split (70/30)
+n <- nrow(Z)
+cut_off <- round(0.70 * n)
+X_train <- Z[1:cut_off, , drop = FALSE]
+Y_train <- Y[1:cut_off, , drop = FALSE]
+X_test  <- Z[(cut_off + 1):n, , drop = FALSE]
+Y_test  <- Y[(cut_off + 1):n, , drop = FALSE]
+
+# Manual CV over a simple lambda grid (avoid 0 exactly)
+lambdas <- seq(0,1, 0.001)
+val_error <- data.frame(lambda = lambdas, error = NA_real_)
+
+for (i in seq_along(lambdas)) {
+  lmbd <- lambdas[i]
+  fit  <- glmnet(X_train, Y_train, family = "mgaussian", lambda = lmbd)
+  pred <- predict(fit, newx = X_test, s = lmbd)[,,1]
+  mse_per_series   <- colMeans((Y_test - pred)^2)
+  val_error$error[i] <- mean(mse_per_series)
+}
+
+best_lambda_1 <- val_error$lambda[which.min(val_error$error)]
+best_lambda_1
+```
+We try with default cross-validation from glmnet
+
+```{r}
+cv_fit <- cv.glmnet(
+  x = as.matrix(Z),
+  y = as.matrix(Y),
+  family = "mgaussian"  # <-- tell glmnet it's multivariate
+)
+
+plot(cv_fit)
+best_lambda_2 <- cv_fit$lambda.min
+best_lambda_2
+```
+```{r}
+fit_opt<-glmnet(
+  x=as.matrix(Z),
+  y = as.matrix(Y),
+  family = "mgaussian",
+  lambda = c(best_lambda_1,best_lambda_2)
+)
+A_hat_114<-coef(fit_opt, s=best_lambda_1)
+A_hat_129<- coef(fit_opt, s = best_lambda_2)
+#we merge estimates in unique A_hat
+A_hat_matrix_1<-matrix(NA, nrow=K, ncol=K)
+for(i in 1:5){
+  ci <- as.matrix(A_hat_114[[i]])           # ith response
+lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
+A_hat_matrix_1[i, ] <- ci[lag_rows, 1]
+}
+A_hat_matrix_1
+
+A_hat_matrix_2<-matrix(NA, nrow=K, ncol=K)
+for(i in 1:5){
+ci <- as.matrix(A_hat_129[[i]])           # ith response
+lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
+A_hat_matrix_2[i, ] <- ci[lag_rows, 1]
+}
+A_hat_matrix_2
+
+```
+Now we check 
+
+\begin{center}
+\begin{tabular}{c|c|c|c|c}
+   Lasso Regression & Type I & Type II & Recall & Precision & F1
+   $\text{Lasso}_{\lambda=0.002}$ 
+\end{tabular}
+\end{center}
+```{r}
+
+# --- Support function
+tol <- 1e-3
+S_true  <- abs(A)                 > tol
+S_est_1 <- abs(A_hat_matrix_1)    > tol
+S_est_2 <- abs(A_hat_matrix_2)    > tol
+
+# --- Confusion counts 
+TP_1 <- sum(S_true & S_est_1)
+FN_1 <- sum(S_true & !S_est_1)
+FP_1 <- sum(!S_true & S_est_1)
+TN_1 <- sum(!S_true & !S_est_1)
+
+TP_2 <- sum(S_true & S_est_2)
+FN_2 <- sum(S_true & !S_est_2)
+FP_2 <- sum(!S_true & S_est_2)
+TN_2 <- sum(!S_true & !S_est_2)
+
+# --- Rates (guard divisions) ---
+FPR_1 <- if ((FP_1+TN_1)>0) FP_1/(FP_1+TN_1) else NA_real_
+FPR_2 <- if ((FP_2+TN_2)>0) FP_2/(FP_2+TN_2) else NA_real_
+
+FNR_1 <- if ((FN_1+TP_1)>0) FN_1/(FN_1+TP_1) else NA_real_
+FNR_2 <- if ((FN_2+TP_2)>0) FN_2/(FN_2+TP_2) else NA_real_
+
+Prec_1 <- if ((TP_1+FP_1)>0) TP_1/(TP_1+FP_1) else NA_real_
+Prec_2 <- if ((TP_2+FP_2)>0) TP_2/(TP_2+FP_2) else NA_real_
+
+Rec_1  <- if ((TP_1+FN_1)>0) TP_1/(TP_1+FN_1) else NA_real_
+Rec_2  <- if ((TP_2+FN_2)>0) TP_2/(TP_2+FN_2) else NA_real_
+
+f1_1 <- if (!is.na(Prec_1+Rec_1) && (Prec_1+Rec_1)>0) 2*Prec_1*Rec_1/(Prec_1+Rec_1) else NA_real_
+f1_2 <- if (!is.na(Prec_2+Rec_2) && (Prec_2+Rec_2)>0) 2*Prec_2*Rec_2/(Prec_2+Rec_2) else NA_real_
+
+# Result Tables
+results <- data.frame(
+  Model     = c(paste0("Lambda=", best_lambda_1), paste0("Lambda=",best_lambda_2)),
+  TypeI     = c(FPR_1, FPR_2),
+  TypeII    = c(FNR_1, FNR_2),
+  Recall    = c(Rec_1, Rec_2),
+  Precision = c(Prec_1, Prec_2),
+  F1        = c(f1_1, f1_2)
+)
+results
+```
+
+
+## Monte Carlo Simulation
+```{r}
+#define functions that returns 
+error_function <- function(tol, coef, tr_coef){  # coef = A_hat, tr_coef = A_true
+  S_true <- abs(tr_coef) > tol
+  S_est  <- abs(coef)    > tol
+
+  TP <- sum(S_true & S_est)
+  FN <- sum(S_true & !S_est)
+  FP <- sum(!S_true & S_est)
+  TN <- sum(!S_true & !S_est)
+
+  FPR  <- FP/(FP+TN)
+  FNR  <-  FN/(FN+TP)
+  Prec <-TP/(TP+FP)
+  Rec  <-  TP/(TP+FN)
+  F1   <- 2*Prec*Rec/(Prec+Rec) 
+  
+  data.frame(TypeI = FPR, TypeII = FNR, Recall = Rec, Precision = Prec, F1 = F1)
+}
+
+
+MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100, base_seed = 123, 
+                     T_sim = 1000, tol = 1e-3) {
+
+  seeds <- base_seed + seq_len(nrep) - 1
+
+  A_list <- vector("list", nrep)  # store true A per replication (if you want)
+  results_comb <- data.frame(
+    TypeI     = numeric(nrep),
+    TypeII    = numeric(nrep),
+    Recall    = numeric(nrep),
+    Precision = numeric(nrep),
+    F1        = numeric(nrep)
+  )
+
+  for (b in seq_len(nrep)) {
+    set.seed(seeds[b])
+
+    # 1) draw a stable sparse A (your A_sim needs K as first arg)
+    A_true <- A_sim(K, spar = spar, sd = sd, max_tries = max_tries)
+
+    # 2) simulate VAR(1)
+    sigma_var <- diag(1, K, K)                 # noise covariance (identity)
+    nu_var    <- rep(nu, length.out = K)       # use the 'nu' argument
+    y_0       <- rep(0, K)
+
+    var_1 <- var_sim(AA = A_true, nu = nu_var, Sigma_u = sigma_var, 
+                     nSteps = T_sim, y0 = y_0)
+
+    # 3) design matrices Z = y_{t-1}, Y = y_t  (drop NA instead of using lag)
+    Y <- coredata(var_1)[-1, , drop = FALSE]
+    Z <- coredata(var_1)[-nrow(var_1), , drop = FALSE]
+
+    # 4) CV to pick lambda
+    cv_fit <- cv.glmnet(x = as.matrix(Z), y = as.matrix(Y), family = "mgaussian")
+    lam <- cv_fit$lambda.min
+
+    # 5) fit at chosen lambda and reconstruct A_hat
+    fit_best   <- glmnet(x = as.matrix(Z), y = as.matrix(Y), family = "mgaussian", lambda = lam)
+    coef_list  <- coef(fit_best)                 # list length K
+    A_est      <- matrix(NA_real_, K, K)
+
+    for (i in 1:K) {
+      ci <- as.matrix(coef_list[[i]])            # (Intercept + K lag terms)
+      A_est[i, ] <- ci[rownames(ci) != "(Intercept)", 1]  # drop intercept
+    }
+
+    # 6) metrics for this replication
+    res_b <- error_function(tol = tol, coef = A_est, tr_coef = A_true)  # NOTE: coef = A_hat, tr = A_true
+    results_comb[b, ] <- res_b[1, ]
+
+    # (optional) keep the true A
+    A_list[[b]] <- A_true
+  }
+
+  # return everything you need
+  list(
+    results = results_comb,
+    summary = data.frame(
+      metric = names(results_comb),
+      mean   = sapply(results_comb, mean, na.rm = TRUE),
+      sd     = sapply(results_comb, sd,   na.rm = TRUE),
+      se     = sapply(results_comb, function(x) sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x))))
+    ),
+    A_list = A_list,
+    seeds  = seeds
+  )
+}
+out <- MC_var_1(K = 5, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out$summary
+
+
+```
+# Increasing number of K
+
+We first try with K=10
+```{r}
+out_10 <- MC_var_1(K = 10, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out_10$summary
+
+```
+
+We first try with K=15
+```{r}
+
+out_15 <- MC_var_1(K = 15, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out_15$summary
+```
+
