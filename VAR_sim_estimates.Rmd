@@ -7,12 +7,12 @@ header-includes:
   - \DeclareMathOperator{\VEC}{vec}
   - \usepackage{bm}  # Bold math symbols
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #install required packages
-packages <- c("MASS", "zoo", "stats", "rockchalk", "glmnet", "vars", "knitr")
+packages <- c("MASS", "zoo", "stats", "rockchalk", "glmnet", "vars", "knitr", "car", "caret", "psych")
 
 for (pckg in packages) {
   if (!require(pckg, character.only = TRUE)) {
@@ -485,10 +485,12 @@ A_sim <- function(K, spar, sd, max_tries = 1000){
       }
     }
 
-    # check whether the model is stable (INSIDE the repeat loop)
+    # we apply the formula previously defined to check stability
     if (stab_test(K, A) == TRUE) return(A)
-
+     # else try again
     tries <- tries + 1
+    #to prevent infinite loop due to using repeat loop, we set a max number of
+    #iterations
     if (tries >= max_tries) {
       stop("Could not generate a stable A within max_tries.")
     }
@@ -498,7 +500,7 @@ A_sim <- function(K, spar, sd, max_tries = 1000){
 #now we generate a stable upper triangle coef matrix with sparsity 
 K <- 5 
 sd_var<-0.1
-A <- A_sim(K, spar = 0.3, sd = sd_var, max_tries = 10) # moderate sparsity, modest sd A
+A <- A_sim(K, spar = 0.1, sd = sd_var, max_tries = 10) # moderate sparsity, modest sd A
 stab_test(K,A)
 ```
 Now we are able to generate a VAR(1) from the function specified at page 3
@@ -506,7 +508,7 @@ Now we are able to generate a VAR(1) from the function specified at page 3
 ```{r}
 
 sigma_var<- diag(1,5,5)* sd_var
-nu_var <- rep(1, K)  
+nu_var <- rep(0, K)  
 y_0 <- rep(0, K)  
 T_sim<-10000
 var_1<- var_sim(AA=A,nu=nu_var,Sigma_u=sigma_var, nSteps=T_sim, y0=y_0 )
@@ -531,7 +533,7 @@ Y <- Y_full[-1, , drop = FALSE]
 if (is.null(dim(Z))) Z <- matrix(Z, ncol = 1)
 if (is.null(dim(Y))) Y <- matrix(Y, ncol = 1)
 
-# Chronological split (70/30)
+# 70/30 split 
 n <- nrow(Z)
 cut_off <- round(0.70 * n)
 X_train <- Z[1:cut_off, , drop = FALSE]
@@ -568,15 +570,20 @@ best_lambda_2 <- cv_fit$lambda.1se # lambda.min brings results that are
 #far not optimal, and have higher type I error
 best_lambda_2
 ```
+
+
+
+
 ```{r}
 fit_opt<-glmnet(
   x=as.matrix(Z),
   y = as.matrix(Y),
   family = "mgaussian",
-  lambda = c(best_lambda_1,best_lambda_2)
+  lambda = c(best_lambda_1,best_lambda_2,0.03)
 )
 A_hat_114<-coef(fit_opt, s=best_lambda_1)
 A_hat_129<- coef(fit_opt, s = best_lambda_2)
+A_hat_arb<- coef(fit_opt, s =0.03) #arbitrary lambda to see how results change
 #we merge estimates in unique A_hat
 A_hat_matrix_1<-matrix(NA, nrow=K, ncol=K)
 for(i in 1:5){
@@ -592,8 +599,14 @@ ci <- as.matrix(A_hat_129[[i]])           # ith response
 lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
 A_hat_matrix_2[i, ] <- ci[lag_rows, 1]
 }
-A_hat_matrix_2
-
+A_hat_matrix_arb<-matrix(NA, nrow=K, ncol=K)
+for(i in 1:5){
+ci <- as.matrix(A_hat_arb[[i]])           # ith response
+lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
+A_hat_matrix_arb[i, ] <- ci[lag_rows, 1]
+}
+A_hat_matrix_arb
+A
 ```
 Now we check 
 
@@ -603,7 +616,7 @@ Now we check
 # --- Support function
 tol <- 1e-3
 S_true  <- abs(A)                 > tol
-S_est_1 <- abs(A_hat_matrix_1)    > tol
+S_est_1 <- abs(A_hat_matrix_arb)    > tol
 S_est_2 <- abs(A_hat_matrix_2)    > tol
 
 # --- Confusion counts 
@@ -632,21 +645,167 @@ Rec_2  <- if ((TP_2+FN_2)>0) TP_2/(TP_2+FN_2) else NA_real_
 
 f1_1 <- if (!is.na(Prec_1+Rec_1) && (Prec_1+Rec_1)>0) 2*Prec_1*Rec_1/(Prec_1+Rec_1) else NA_real_
 f1_2 <- if (!is.na(Prec_2+Rec_2) && (Prec_2+Rec_2)>0) 2*Prec_2*Rec_2/(Prec_2+Rec_2) else NA_real_
+#compute MSE 
+diff_matrix_1<- A - A_hat_matrix_1
+diff_matrix_2<- A - A_hat_matrix_2
+#apply the Frobenius norm squared
+MSE_1<- 1/(K^2) *tr(t(diff_matrix_1) %*% diff_matrix_1)
+MSE_2<- 1/(K^2) *tr(t(diff_matrix_2) %*% diff_matrix_2)
+
 
 # Result Tables
 results <- data.frame(
-  Model     = c(paste0("Lambda=", best_lambda_1), paste0("Lambda=",best_lambda_2)),
+  Model     = c(paste0("Lambda=", 0.03), paste0("Lambda=",best_lambda_2)),
   TypeI     = c(FPR_1, FPR_2),
   TypeII    = c(FNR_1, FNR_2),
   Recall    = c(Rec_1, Rec_2),
   Precision = c(Prec_1, Prec_2),
-  F1        = c(f1_1, f1_2)
+  F1        = c(f1_1, f1_2),
+  MSE       =c(MSE_1, MSE_2)
 )
 results
 ```
-From results we can see that using the largest lambda s.t.  the error is within one standard error of the minimum (lambda.1se)
-gives better results in terms of type I error, precision and F1 score.
+From the results we can notice that built-in cross-validation from glmnet is not
+effectively able to capture the sparsity pattern of the true matrix A. Just by 
+applying an arbitrary larger lambda, we are able to reduce significantly the type I error. It is then crucial to find a better method to optimise the tuning parameter.
+\cite{HIROSE201328} proposes a method based on Mallows $C_p$ criteria, which it works
+as follows:
+\begin{table}[!h]
+\centering
+\caption{Summary of model selection criteria based on degrees of freedom}
+\label{tab:criteria-df}
+\begin{tabular}{ll}
+\hline
+\textbf{Criterion} & \textbf{Formula} \\
+\hline
+$C_p$   & $\displaystyle \|y - \hat{\mu}\|^{2} + 2\,\tau^{2}\,df$ \\
+AIC     & $\displaystyle N\log(2\pi\tau^{2}) + \frac{\|y - \hat{\mu}\|^{2}}{\tau^{2}} + 2\,df$ \\
+AICc    & $\displaystyle N\log\!\Big(2\pi\,\frac{\|y - \hat{\mu}\|^{2}}{N}\Big) + \frac{N - 2N\,df}{\,N - df - 1\,}$ \\
+BIC     & $\displaystyle N\log(2\pi\tau^{2}) + \frac{\|y - \hat{\mu}\|^{2}}{\tau^{2}} + (\log N)\,df$ \\
+GCV     & $\displaystyle \frac{1}{N}\,\frac{\|y - \hat{\mu}\|^{2}}{(1 - df/N)^{2}}$ \\
+\hline
+\end{tabular}
+\end{table}
+When we have normal residuals and no sparsity, the d.f can be computed as follows:
+\begin{align*}
+d.f. &= \Sigma_{i=1}^N \frac{\text{cov}(\hat{\mu}_i, y_i)}{\sigma^2}\\
+     & \text{tr}(X(X^TX)^{-1}X^T) = \\
+     & \text{rank}(X)
+\end{align*}
+However, in penalised likelihood methods, d.f. depends on the tuning parameter $\lambda$.
+First and foremost we are gonna compute the \textit{Generalised path seeking algorithm}
+to derive the number of degree of freedoms from chapter 3 of \cite{HIROSE201328}.
 
+The solution of the penalised regression at the tuning paramter \textit{t} is denoted as $\hat{\beta}(t)$. We first derive the updating formula for small change in the tuning parameter, which by theory can be continous. 
+\begin{equation}
+  \hat
+\end{equation}
+
+
+Discrimination of lambda based on the mellow $C_p$ criteria, BIC and AIC 
+```{r}
+criteria_df<-function(X,Y, p,steps){
+  n<-nrow(X)
+  #recall that the min lambda for gaussian is C'sigma sqrt(log(p)/n)
+  C_i <- apply(X, 2, function(col) sqrt(sum(col^2)) / sqrt(n))
+  C <- max(C_i)
+    #we compute an initial estimator of sigma from the OLS 
+  beta_ols <- solve(t(X) %*% X) %*% t(X) %*% Y
+  resid <- Y - X %*% beta_ols
+  sigma_hat <- sqrt(sum(resid^2) / (n - p))
+  lambda_0<- C * sigma_hat * sqrt(log(p) / n) # initial lambda 
+   #create a seq of candidate lambda with increments = steps
+  lambda_seq<-seq(lambda_0, 3*lambda_0, by=steps)
+  len_lambda<-length(lambda_seq)
+  #create a data frame to store the results
+  results<-data.frame(
+   lambda_seq=lambda_seq,
+   df=as.numeric(rep(0, len_lambda)),
+   Cp=as.numeric(rep(0, len_lambda)),
+   AIC=as.numeric(rep(0, len_lambda)),
+   BIC=as.numeric(rep(0, len_lambda))
+  )
+  #we compute now the compute estimate by using glmnet 
+  for(i in 1:length(lambda_seq)){
+    fit<-glmnet(
+      X,
+      Y,
+      family = "mgaussian",
+      lambda = lambda_seq[i]
+    )
+    #extract df
+    df<-fit$df
+    #compute sd
+   
+    Y_hat<-predict(fit, newx=X)
+    resid<-Y - Y_hat[,,1]
+    sigma_hat<-sqrt(sum(resid^2)/(n-df))
+    #compute mu hat
+    for(i in 1:p){
+      betas<-fit$beta[[i]]
+      results$Cp[i]<-sum(Y[,i]- X[,i]* betas)^2 + 2*sigma_hat^2 * df
+      results$AIC[i]<-n*log(2*pi*sigma_hat^2) + sum((Y[,i]- X[,i]* betas)^2)/sigma_hat^2 + 2*df
+      results$BIC[i]<-n*log(2*pi*sigma_hat^2) + sum((Y[,i]- X[,i]* betas)^2)/sigma_hat^2 + log(n)*df
+    }
+  }
+    return(results)
+    }
+test<-criteria_df(Z, Y, p=5, steps=0.01)
+```
+\textbf{Generalised path seeking algorithm}\\
+
+Experimental Procedure
+```{r}
+gps<-function(X,Y,p, tol,steps){
+  
+  n<-nrow(X)
+  p<-ncol(X)
+  T<-n-p 
+  #recall that the min lambda for gaussian is C'sigma sqrt(log(p)/n)
+  C_i<-seq(0,p)
+  for(i in 1:p){
+    C[i]<-colSums(X[,i])/(sqrt(n))
+    
+  }
+  C<-max(C_i)
+  #we compute an initial estimator of sigma from the OLS 
+  beta_ols <- solve(t(X) %*% X) %*% t(X) %*% Y
+  resid <- Y - X %*% beta_ols
+  sigma_hat <- sqrt(sum(resid^2) / (n - p))
+  lambda_0<- C * sigma_hat * sqrt(log(p) / n) # initial lambda 
+   #create a seq of candidate lambda with increments = steps
+  lambda_seq<-seq(lambda_0, 2*lambda_0, by=steps)
+  #We create a data frame to store the criterions
+  Criterions<-data.frame(
+    lambda_seq=lambda_seq,
+    df=as.numeric(rep(0, len_lambda)),
+    Cp=as.numeric(rep(0, len_lambda)),
+    AIC=as.numeric(rep(0, len_lambda)),
+    BIC=as.numeric(rep(0, len_lambda))
+  )
+  len_lambda<-length(lambda_seq)
+  #we compute now the compute estimate by using glmnet 
+  for(i in 1:length(len_lambda)){
+    fit<-glmnet(
+      X=as.matrix(X),
+      Y=as.matrix(Y),
+      family = "mgaussian",
+      lambda = lambda_seq[i]
+    )
+    #extract df
+    df<-fit$df
+    Mellow_c<-
+  }
+  
+}
+```
+
+
+\textbf{Mellow $C_p$ criteria}
+```{r}
+
+
+```
 ## Monte Carlo Simulation
 ```{r}
 #define functions that returns 
@@ -753,6 +912,7 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100,
 
   out_5 <- MC_var_1(K = 5, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
   out_5$summary
+
 ```
 # Increasing number of K
 
@@ -770,3 +930,104 @@ out_15 <- MC_var_1(K = 15, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 10
 out_15$summary
 ```
 
+# Other methods of hypertuning $\lambda$
+##Mellow w's $C_p$ criteria
+
+We try to compute other methods to optimise the tuning parameter. Built-in 
+packages tends to work for classification models, and does not work well for
+time series. We then try to implement a manual k-fold cross-validation. An example
+is \cite{HIROSE201328}, which proposes to use Mallows $C_p$ criteria to hypertuning.
+
+```{r}
+
+cp_tune_glmnet_mgaussian <- function(X, Y, lambdas, standardize = TRUE) {
+  stopifnot(nrow(X) == nrow(Y))
+  n <- nrow(X); K <- ncol(Y)
+
+  # 1) Fit once over the full lambda grid
+  fit <- glmnet(x = as.matrix(X),
+                y = as.matrix(Y),
+                family = "mgaussian",
+                lambda = lambdas,
+                standardize = standardize,
+                intercept = TRUE)
+
+  # helper: extract KxP coefficient *per response* and count nonzeros (no intercept)
+  coef_list_at <- function(fit, s) {
+    co <- coef(fit, s = s)           # list of length K
+    # each co[[i]] is a dgCMatrix with rows: (Intercept, predictors...)
+    co
+  }
+  df_count <- function(co_list) {
+    # count non-zeros across all responses, excluding intercept row
+    sum(vapply(co_list, function(M) {
+      as.integer(sum(abs(M[-1, 1, drop = FALSE]) > 0))
+    }, integer(1L)))
+  }
+
+  # 2) Residual sums of squares on TRAIN for each lambda
+  #    (Frobenius norm across all series)
+  rss_at <- function(s) {
+    pred <- predict(fit, newx = as.matrix(X), s = s)[,,1]  # n x K
+    sum((Y - pred)^2)
+  }
+
+  # 3) Estimate tau^2 (sigma^2) from the *most complex* model (smallest lambda)
+  s_full <- min(lambdas)
+  rss_full <- rss_at(s_full)
+  df_full  <- df_count(coef_list_at(fit, s_full))
+  # total params counted: df_full (slopes) + K (intercepts)
+  denom <- n * K - (df_full + K)
+  tau2_hat <- if (denom > 0) rss_full / denom else rss_full / (n * K)  # ML fallback
+
+  # 4) Compute Cp (and friends) for every lambda
+  Cp   <- numeric(length(lambdas))
+  AICc <- numeric(length(lambdas))
+  BIC  <- numeric(length(lambdas))
+  GCV  <- numeric(length(lambdas))
+
+  for (i in seq_along(lambdas)) {
+    s  <- lambdas[i]
+    rs <- rss_at(s)
+    df <- df_count(coef_list_at(fit, s))
+
+    # Mallows Cp (multivariate: use total RSS and same df notion)
+    Cp[i] <- rs + 2 * tau2_hat * df
+
+    # Information criteria (optional)
+    # log-likelihood under spherical errors (up to constants):
+    #  -2 log L ≈ (n*K) * log(2*pi*tau^2) + RSS / tau^2
+    # Use tau2_hat as plug-in; comparisons are consistent up to constants.
+    npar <- df + K  # slopes + intercepts
+    aic_like <- (n*K) * log(2*pi*tau2_hat) + rs / tau2_hat
+    BIC[i]  <- aic_like + log(n*K) * npar
+    # small-sample corrected AIC (AICc); use total "sample size" n*K
+    AICc[i] <- aic_like + 2*npar + (2*npar*(npar+1)) / max(1, (n*K - npar - 1))
+    # GCV
+    GCV[i]  <- (rs / (n*K)) / (1 - df/(n*K))^2
+  }
+
+  best_idx <- which.min(Cp)
+  list(
+    lambda_star = lambdas[best_idx],
+    Cp = Cp, AICc = AICc, BIC = BIC, GCV = GCV,
+    tau2_hat = tau2_hat,
+    df = vapply(lambdas, function(s) df_count(coef_list_at(fit, s)), integer(1L)),
+    fit = fit
+  )
+}
+
+#we run the code using the previous splitted dataset
+#we first compute lambas from the package glmnet
+
+fit_lambdas<-glmnet(
+  x=as.matrix(Z),
+  y = as.matrix(Y),
+  family = "mgaussian"
+)
+lambdas_grid <- fit_lambdas$lambda
+lambdas_grid
+#now we implement the mallow C_p criteria
+
+cp_tune <- cp_tune_glmnet_mgaussian(X = Z, Y = Y, lambdas = lambdas_grid)
+```
