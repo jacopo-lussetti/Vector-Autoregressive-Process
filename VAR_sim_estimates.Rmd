@@ -7,12 +7,14 @@ header-includes:
   - \DeclareMathOperator{\VEC}{vec}
   - \usepackage{bm}  # Bold math symbols
 output:
+  pdf_document: default 
   html_document: default
-  pdf_document: default
+bibliography: reference.bib    
+
 ---
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #install required packages
-packages <- c("MASS", "zoo", "stats", "rockchalk", "glmnet", "vars", "knitr", "car", "caret", "psych")
+packages <- c("MASS", "zoo", "stats", "rockchalk", "glmnet", "vars", "knitr", "car", "caret", "psych", "dplyr")
 
 for (pckg in packages) {
   if (!require(pckg, character.only = TRUE)) {
@@ -466,8 +468,13 @@ stab_test <- function(kp, A, tol = 1e-8)
   return(TRUE)
 }
 
+#In this case there is no need to check on the stability, as according to 
+#the foundamental theorem of trace, the sum of the eigenvalues of a matrix is equal to
+#the sum of its diagonal elements. Since we are generating an upper triangular matrix
+#with all diagonal elements equal to zero, the sum of the eigenvalues will also be zero.
 
-A_sim <- function(K, spar, sd, max_tries = 1000){
+A_sim <- function(K, spar, sd, max_tries = 1000){ #paramete spar determine
+  #how many elements will be set to zero
   tries <- 0 
   repeat{
     A <- matrix(0L, K, K)
@@ -511,7 +518,7 @@ sigma_var<- diag(1,5,5)* sd_var
 nu_var <- rep(0, K)  
 y_0 <- rep(0, K)  
 T_sim<-10000
-var_1<- var_sim(AA=A,nu=nu_var,Sigma_u=sigma_var, nSteps=T_sim, y0=y_0 )
+var_1<- var_sim(AA=A,nu=nu_var,Sigma_u=sigma_var, nSteps=T_sim, y0=y_0)
 ```
 
 
@@ -519,40 +526,29 @@ var_1<- var_sim(AA=A,nu=nu_var,Sigma_u=sigma_var, nSteps=T_sim, y0=y_0 )
 
 In this step we will apply lasso regression by applying the packages \textit{glmnet}
 
+
 ```{r}
-
-
 # Build lagged design (Z) and aligned response (Y)
-Z <- coredata(lag(var_1, k = -1))   # predictors y_{t-1}
-Y_full <- coredata(var_1)                # responses  y_t
-
+Z <- as.matrix(var_1[- nrow(var_1),])  # predictors y_{t-1}
 # Drop first row to align (remove the NA created by lag)
-Y <- Y_full[-1, , drop = FALSE]
-
-# If univariate, coerce to matrix to allow 2D subsetting later
-if (is.null(dim(Z))) Z <- matrix(Z, ncol = 1)
-if (is.null(dim(Y))) Y <- matrix(Y, ncol = 1)
-
+Y <- as.matrix(var_1[-1, , drop = FALSE])
 # 70/30 split 
-n <- nrow(Z)
+n<-nrow(Z)
 cut_off <- round(0.70 * n)
 X_train <- Z[1:cut_off, , drop = FALSE]
 Y_train <- Y[1:cut_off, , drop = FALSE]
-X_test  <- Z[(cut_off + 1):n, , drop = FALSE]
-Y_test  <- Y[(cut_off + 1):n, , drop = FALSE]
-
+X_test <- Z[(cut_off + 1):n, , drop = FALSE]
+Y_test <- Y[(cut_off + 1):n, , drop = FALSE]
 # Manual CV over a simple lambda grid (avoid 0 exactly)
 lambdas <- seq(0,1, 0.001)
 val_error <- data.frame(lambda = lambdas, error = NA_real_)
-
 for (i in seq_along(lambdas)) {
-  lmbd <- lambdas[i]
-  fit  <- glmnet(X_train, Y_train, family = "mgaussian", lambda = lmbd)
-  pred <- predict(fit, newx = X_test, s = lmbd)[,,1]
-  mse_per_series   <- colMeans((Y_test - pred)^2)
-  val_error$error[i] <- mean(mse_per_series)
+lmbd <- lambdas[i]
+fit <- glmnet(X_train, Y_train, family = "mgaussian", lambda = lmbd)
+pred <- predict(fit, newx = X_test, s = lmbd)[,,1]
+mse_per_series <- colMeans((Y_test - pred)^2)
+val_error$error[i] <- mean(mse_per_series)
 }
-
 best_lambda_1 <- val_error$lambda[which.min(val_error$error)]
 best_lambda_1
 ```
@@ -571,105 +567,9 @@ best_lambda_2 <- cv_fit$lambda.1se # lambda.min brings results that are
 best_lambda_2
 ```
 
-
-
-
-```{r}
-fit_opt<-glmnet(
-  x=as.matrix(Z),
-  y = as.matrix(Y),
-  family = "mgaussian",
-  lambda = c(best_lambda_1,best_lambda_2,0.03)
-)
-A_hat_114<-coef(fit_opt, s=best_lambda_1)
-A_hat_129<- coef(fit_opt, s = best_lambda_2)
-A_hat_arb<- coef(fit_opt, s =0.03) #arbitrary lambda to see how results change
-#we merge estimates in unique A_hat
-A_hat_matrix_1<-matrix(NA, nrow=K, ncol=K)
-for(i in 1:5){
-  ci <- as.matrix(A_hat_114[[i]])           # ith response
-lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
-A_hat_matrix_1[i, ] <- ci[lag_rows, 1]
-}
-A_hat_matrix_1
-
-A_hat_matrix_2<-matrix(NA, nrow=K, ncol=K)
-for(i in 1:5){
-ci <- as.matrix(A_hat_129[[i]])           # ith response
-lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
-A_hat_matrix_2[i, ] <- ci[lag_rows, 1]
-}
-A_hat_matrix_arb<-matrix(NA, nrow=K, ncol=K)
-for(i in 1:5){
-ci <- as.matrix(A_hat_arb[[i]])           # ith response
-lag_rows <- rownames(ci) != "(Intercept)"  # drop intercept
-A_hat_matrix_arb[i, ] <- ci[lag_rows, 1]
-}
-A_hat_matrix_arb
-A
-```
-Now we check 
-
-
-```{r}
-
-# --- Support function
-tol <- 1e-3
-S_true  <- abs(A)                 > tol
-S_est_1 <- abs(A_hat_matrix_arb)    > tol
-S_est_2 <- abs(A_hat_matrix_2)    > tol
-
-# --- Confusion counts 
-TP_1 <- sum(S_true & S_est_1)
-FN_1 <- sum(S_true & !S_est_1)
-FP_1 <- sum(!S_true & S_est_1)
-TN_1 <- sum(!S_true & !S_est_1)
-
-TP_2 <- sum(S_true & S_est_2)
-FN_2 <- sum(S_true & !S_est_2)
-FP_2 <- sum(!S_true & S_est_2)
-TN_2 <- sum(!S_true & !S_est_2)
-
-# --- Rates (guard divisions) ---
-FPR_1 <- if ((FP_1+TN_1)>0) FP_1/(FP_1+TN_1) else NA_real_
-FPR_2 <- if ((FP_2+TN_2)>0) FP_2/(FP_2+TN_2) else NA_real_
-
-FNR_1 <- if ((FN_1+TP_1)>0) FN_1/(FN_1+TP_1) else NA_real_
-FNR_2 <- if ((FN_2+TP_2)>0) FN_2/(FN_2+TP_2) else NA_real_
-
-Prec_1 <- if ((TP_1+FP_1)>0) TP_1/(TP_1+FP_1) else NA_real_
-Prec_2 <- if ((TP_2+FP_2)>0) TP_2/(TP_2+FP_2) else NA_real_
-
-Rec_1  <- if ((TP_1+FN_1)>0) TP_1/(TP_1+FN_1) else NA_real_
-Rec_2  <- if ((TP_2+FN_2)>0) TP_2/(TP_2+FN_2) else NA_real_
-
-f1_1 <- if (!is.na(Prec_1+Rec_1) && (Prec_1+Rec_1)>0) 2*Prec_1*Rec_1/(Prec_1+Rec_1) else NA_real_
-f1_2 <- if (!is.na(Prec_2+Rec_2) && (Prec_2+Rec_2)>0) 2*Prec_2*Rec_2/(Prec_2+Rec_2) else NA_real_
-#compute MSE 
-diff_matrix_1<- A - A_hat_matrix_1
-diff_matrix_2<- A - A_hat_matrix_2
-#apply the Frobenius norm squared
-MSE_1<- 1/(K^2) *tr(t(diff_matrix_1) %*% diff_matrix_1)
-MSE_2<- 1/(K^2) *tr(t(diff_matrix_2) %*% diff_matrix_2)
-
-
-# Result Tables
-results <- data.frame(
-  Model     = c(paste0("Lambda=", 0.03), paste0("Lambda=",best_lambda_2)),
-  TypeI     = c(FPR_1, FPR_2),
-  TypeII    = c(FNR_1, FNR_2),
-  Recall    = c(Rec_1, Rec_2),
-  Precision = c(Prec_1, Prec_2),
-  F1        = c(f1_1, f1_2),
-  MSE       =c(MSE_1, MSE_2)
-)
-results
-```
-From the results we can notice that built-in cross-validation from glmnet is not
-effectively able to capture the sparsity pattern of the true matrix A. Just by 
-applying an arbitrary larger lambda, we are able to reduce significantly the type I error. It is then crucial to find a better method to optimise the tuning parameter.
-\cite{HIROSE201328} proposes a method based on Mallows $C_p$ criteria, which it works
+Discrimination of lambda based on the mellow $C_p$ criteria, BIC and AIC defined 
 as follows:
+
 \begin{table}[!h]
 \centering
 \caption{Summary of model selection criteria based on degrees of freedom}
@@ -692,17 +592,6 @@ d.f. &= \Sigma_{i=1}^N \frac{\text{cov}(\hat{\mu}_i, y_i)}{\sigma^2}\\
      & \text{tr}(X(X^TX)^{-1}X^T) = \\
      & \text{rank}(X)
 \end{align*}
-However, in penalised likelihood methods, d.f. depends on the tuning parameter $\lambda$.
-First and foremost we are gonna compute the \textit{Generalised path seeking algorithm}
-to derive the number of degree of freedoms from chapter 3 of \cite{HIROSE201328}.
-
-The solution of the penalised regression at the tuning paramter \textit{t} is denoted as $\hat{\beta}(t)$. We first derive the updating formula for small change in the tuning parameter, which by theory can be continous. 
-\begin{equation}
-  \hat
-\end{equation}
-
-
-Discrimination of lambda based on the mellow $C_p$ criteria, BIC and AIC 
 ```{r}
 criteria_df<-function(X,Y, p,steps){
   n<-nrow(X)
@@ -715,7 +604,7 @@ criteria_df<-function(X,Y, p,steps){
   sigma_hat <- sqrt(sum(resid^2) / (n - p))
   lambda_0<- C * sigma_hat * sqrt(log(p) / n) # initial lambda 
    #create a seq of candidate lambda with increments = steps
-  lambda_seq<-seq(lambda_0, 3*lambda_0, by=steps)
+  lambda_seq<-seq(lambda_0, 10*lambda_0, by=steps)
   len_lambda<-length(lambda_seq)
   #create a data frame to store the results
   results<-data.frame(
@@ -735,78 +624,109 @@ criteria_df<-function(X,Y, p,steps){
     )
     #extract df
     df<-fit$df
+    results$df[i]<-df 
     #compute sd
    
-    Y_hat<-predict(fit, newx=X)
-    resid<-Y - Y_hat[,,1]
-    sigma_hat<-sqrt(sum(resid^2)/(n-df))
-    #compute mu hat
-    for(i in 1:p){
-      betas<-fit$beta[[i]]
-      results$Cp[i]<-sum(Y[,i]- X[,i]* betas)^2 + 2*sigma_hat^2 * df
-      results$AIC[i]<-n*log(2*pi*sigma_hat^2) + sum((Y[,i]- X[,i]* betas)^2)/sigma_hat^2 + 2*df
-      results$BIC[i]<-n*log(2*pi*sigma_hat^2) + sum((Y[,i]- X[,i]* betas)^2)/sigma_hat^2 + log(n)*df
-    }
+    Y_hat<-predict(fit, newx=X)[,,1]
+    RSS <- sum((Y - Y_hat)^2)
+    sigma_hat<-RSS /(n-df)
+    #compute criteria
+    results$Cp[i]<-RSS + 2*sigma_hat*df
+    results$AIC[i]<-n*log(2*pi*sigma_hat) + RSS/sigma_hat + 2*df
+    results$BIC[i]<-n*log(2*pi*sigma_hat) + RSS/sigma_hat + (log(n))*df
   }
     return(results)
     }
-test<-criteria_df(Z, Y, p=5, steps=0.01)
+test<-criteria_df(Z, Y, p=5, steps=0.0001)
+index<-which.min(test$Cp)
+print(test[index,])
+lambda_criterion<-test$lambda_seq[index]
 ```
-\textbf{Generalised path seeking algorithm}\\
 
-Experimental Procedure
 ```{r}
-gps<-function(X,Y,p, tol,steps){
-  
-  n<-nrow(X)
-  p<-ncol(X)
-  T<-n-p 
-  #recall that the min lambda for gaussian is C'sigma sqrt(log(p)/n)
-  C_i<-seq(0,p)
-  for(i in 1:p){
-    C[i]<-colSums(X[,i])/(sqrt(n))
-    
+#function to extract the coefficient 
+A_hat <- function(coef_list, K) {
+  Ahat <- matrix(NA_real_, K, K)
+  for (j in 1:K) {
+    cj <- as.matrix(coef_list[[j]])
+    Ahat[j, ] <- cj[rownames(cj) != "(Intercept)", 1]  # drop intercept
   }
-  C<-max(C_i)
-  #we compute an initial estimator of sigma from the OLS 
-  beta_ols <- solve(t(X) %*% X) %*% t(X) %*% Y
-  resid <- Y - X %*% beta_ols
-  sigma_hat <- sqrt(sum(resid^2) / (n - p))
-  lambda_0<- C * sigma_hat * sqrt(log(p) / n) # initial lambda 
-   #create a seq of candidate lambda with increments = steps
-  lambda_seq<-seq(lambda_0, 2*lambda_0, by=steps)
-  #We create a data frame to store the criterions
-  Criterions<-data.frame(
-    lambda_seq=lambda_seq,
-    df=as.numeric(rep(0, len_lambda)),
-    Cp=as.numeric(rep(0, len_lambda)),
-    AIC=as.numeric(rep(0, len_lambda)),
-    BIC=as.numeric(rep(0, len_lambda))
-  )
-  len_lambda<-length(lambda_seq)
-  #we compute now the compute estimate by using glmnet 
-  for(i in 1:length(len_lambda)){
-    fit<-glmnet(
-      X=as.matrix(X),
-      Y=as.matrix(Y),
-      family = "mgaussian",
-      lambda = lambda_seq[i]
-    )
-    #extract df
-    df<-fit$df
-    Mellow_c<-
-  }
-  
+  Ahat
 }
+
+#function to compute confusion matrices on true non zeros coefficients
+metrics <- function(A_true, A_hat, tol = 5e-3) {
+  S_true <- abs(A_true) > tol
+  S_est  <- abs(A_hat)  > tol
+
+  TP <- sum(S_true & S_est)
+  FN <- sum(S_true & !S_est)
+  FP <- sum(!S_true & S_est)
+  TN <- sum(!S_true & !S_est)
+
+  FPR <- if ((FP + TN) > 0) FP / (FP + TN) else NA_real_
+  FNR <- if ((FN + TP) > 0) FN / (FN + TP) else NA_real_
+  Prec <- if ((TP + FP) > 0) TP / (TP + FP) else NA_real_
+  Rec  <- if ((TP + FN) > 0) TP / (TP + FN) else NA_real_
+  F1   <- if (!is.na(Prec + Rec) && (Prec + Rec) > 0) 2 * Prec * Rec / (Prec + Rec) else NA_real_
+
+  # coefficient MSE (Frobenius): mean squared diff over all K^2 entries
+  MSE <- mean((A_true - A_hat)^2)
+
+  c(TypeI = FPR, TypeII = FNR, Recall = Rec, Precision = Prec, F1 = F1, MSE = MSE)
+}
+
+
+
+#fit the model with the tuning parameters
+lambda_cand<-c(best_lambda_1,best_lambda_2,lambda_criterion, 0.03)
+fit_opt<-glmnet(
+  x=as.matrix(Z),
+  y = as.matrix(Y),
+  family = "mgaussian",
+  lambda =lambda_cand
+)
+
+results<-lapply(seq_along(lambda_cand), function(indx){
+  lambda_i <- lambda_cand[indx]
+  coef_list <- coef(fit_opt, s = lambda_i)
+  A_hat<-A_hat(coef_list, K)
+  metrix<-metrics(A, A_hat)
+  list(
+    summary  = data.frame(
+    Lambda = lambda_i,
+    TypeI = metrix["TypeI"],
+    TypeII = metrix["TypeII"],
+    Recall = metrix["Recall"],
+    Precision = metrix["Precision"],
+    F1 = metrix["F1"],
+    MSE = metrix["MSE"]
+  ),
+  A_est=A_hat # we include the estimated matrix as well for separate analysis
+  )
+  
+})
+table_results<- lapply(results, `[[`, "summary") %>%
+  do.call(rbind, .)
+row.names(table_results)<-c("Manual CV", "glmnet CV", "Criterion df", "Lambda = 0.03")
+table_results
+results[[2]]$A_est #visualise estiamte with lambda from cv.glmnet
+results[[4]]$A_est #visualise results from the arbitrary larger lambda
+A
+
 ```
+From the results we can see that the best option with the lowest type I error is
+glmnet CV function with lambda 1 s.d. away from the minimum lambda values. 
 
-
-\textbf{Mellow $C_p$ criteria}
-```{r}
-
-
-```
 ## Monte Carlo Simulation
+
+To do a MC simulation, I have defined a function that create n random seeds that 
+will be used to generate different sparse true coefficient matrix. This will then
+used to generate various VAR(1) processes. For each replication, we will estimate
+the coefficient matrix using LASSO. To optimise the tuning parameter,
+we will use the built in function \textit{cv.glmnet}, and select the value that is 1 s.d. away from the minimum. Finally, we will compute the Type I and Type II error rates for 
+each replication, and summarize the results across all replications.
+
 ```{r}
 #define functions that returns 
 error_function <- function(tol, coef, tr_coef){  # coef = A_hat, tr_coef = A_true
@@ -829,7 +749,7 @@ error_function <- function(tol, coef, tr_coef){  # coef = A_hat, tr_coef = A_tru
   
   
 MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100, 
-                     base_seed = 123, T_sim = 1000, tol = 1e-3) {
+                     base_seed = 123, T_sim = 1000, tol = 5e-3) {
 
   seeds <- base_seed + seq_len(nrep) - 1
 
@@ -910,7 +830,7 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100,
   )
 }
 
-  out_5 <- MC_var_1(K = 5, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+  out_5 <- MC_var_1(K = 5, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
   out_5$summary
 
 ```
@@ -918,7 +838,7 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100,
 
 We first try with K=10
 ```{r}
-out_10 <- MC_var_1(K = 10, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out_10 <- MC_var_1(K = 10, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
 out_10$summary
 
 ```
@@ -926,108 +846,9 @@ out_10$summary
 We first try with K=15
 ```{r}
 
-out_15 <- MC_var_1(K = 15, spar = 0.3, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out_15 <- MC_var_1(K = 15, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
 out_15$summary
 ```
 
-# Other methods of hypertuning $\lambda$
-##Mellow w's $C_p$ criteria
 
-We try to compute other methods to optimise the tuning parameter. Built-in 
-packages tends to work for classification models, and does not work well for
-time series. We then try to implement a manual k-fold cross-validation. An example
-is \cite{HIROSE201328}, which proposes to use Mallows $C_p$ criteria to hypertuning.
 
-```{r}
-
-cp_tune_glmnet_mgaussian <- function(X, Y, lambdas, standardize = TRUE) {
-  stopifnot(nrow(X) == nrow(Y))
-  n <- nrow(X); K <- ncol(Y)
-
-  # 1) Fit once over the full lambda grid
-  fit <- glmnet(x = as.matrix(X),
-                y = as.matrix(Y),
-                family = "mgaussian",
-                lambda = lambdas,
-                standardize = standardize,
-                intercept = TRUE)
-
-  # helper: extract KxP coefficient *per response* and count nonzeros (no intercept)
-  coef_list_at <- function(fit, s) {
-    co <- coef(fit, s = s)           # list of length K
-    # each co[[i]] is a dgCMatrix with rows: (Intercept, predictors...)
-    co
-  }
-  df_count <- function(co_list) {
-    # count non-zeros across all responses, excluding intercept row
-    sum(vapply(co_list, function(M) {
-      as.integer(sum(abs(M[-1, 1, drop = FALSE]) > 0))
-    }, integer(1L)))
-  }
-
-  # 2) Residual sums of squares on TRAIN for each lambda
-  #    (Frobenius norm across all series)
-  rss_at <- function(s) {
-    pred <- predict(fit, newx = as.matrix(X), s = s)[,,1]  # n x K
-    sum((Y - pred)^2)
-  }
-
-  # 3) Estimate tau^2 (sigma^2) from the *most complex* model (smallest lambda)
-  s_full <- min(lambdas)
-  rss_full <- rss_at(s_full)
-  df_full  <- df_count(coef_list_at(fit, s_full))
-  # total params counted: df_full (slopes) + K (intercepts)
-  denom <- n * K - (df_full + K)
-  tau2_hat <- if (denom > 0) rss_full / denom else rss_full / (n * K)  # ML fallback
-
-  # 4) Compute Cp (and friends) for every lambda
-  Cp   <- numeric(length(lambdas))
-  AICc <- numeric(length(lambdas))
-  BIC  <- numeric(length(lambdas))
-  GCV  <- numeric(length(lambdas))
-
-  for (i in seq_along(lambdas)) {
-    s  <- lambdas[i]
-    rs <- rss_at(s)
-    df <- df_count(coef_list_at(fit, s))
-
-    # Mallows Cp (multivariate: use total RSS and same df notion)
-    Cp[i] <- rs + 2 * tau2_hat * df
-
-    # Information criteria (optional)
-    # log-likelihood under spherical errors (up to constants):
-    #  -2 log L ≈ (n*K) * log(2*pi*tau^2) + RSS / tau^2
-    # Use tau2_hat as plug-in; comparisons are consistent up to constants.
-    npar <- df + K  # slopes + intercepts
-    aic_like <- (n*K) * log(2*pi*tau2_hat) + rs / tau2_hat
-    BIC[i]  <- aic_like + log(n*K) * npar
-    # small-sample corrected AIC (AICc); use total "sample size" n*K
-    AICc[i] <- aic_like + 2*npar + (2*npar*(npar+1)) / max(1, (n*K - npar - 1))
-    # GCV
-    GCV[i]  <- (rs / (n*K)) / (1 - df/(n*K))^2
-  }
-
-  best_idx <- which.min(Cp)
-  list(
-    lambda_star = lambdas[best_idx],
-    Cp = Cp, AICc = AICc, BIC = BIC, GCV = GCV,
-    tau2_hat = tau2_hat,
-    df = vapply(lambdas, function(s) df_count(coef_list_at(fit, s)), integer(1L)),
-    fit = fit
-  )
-}
-
-#we run the code using the previous splitted dataset
-#we first compute lambas from the package glmnet
-
-fit_lambdas<-glmnet(
-  x=as.matrix(Z),
-  y = as.matrix(Y),
-  family = "mgaussian"
-)
-lambdas_grid <- fit_lambdas$lambda
-lambdas_grid
-#now we implement the mallow C_p criteria
-
-cp_tune <- cp_tune_glmnet_mgaussian(X = Z, Y = Y, lambdas = lambdas_grid)
-```
