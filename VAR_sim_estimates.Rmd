@@ -24,10 +24,10 @@ for (pckg in packages) {
     library(pckg, character.only = TRUE)
   }
 }
-
-
-
 ```   
+
+# VAR(p) functions with VAR(1) representation
+
 
 ## Companion Matrix function 
 
@@ -75,7 +75,6 @@ $$
     eig<-eigen(C)$values
     return(eig) 
   }
-  
 ```
 
 ### Formula
@@ -89,7 +88,6 @@ formula to compute contrivances. Th
 
 
 ```{r}
-
 autocov_fun<-function(A, Sigma_u,p=1){ # A for high-order var is combined matrix,
   K<-nrow(Sigma_u) 
   Kp<-K * p
@@ -180,8 +178,6 @@ We first define a formula to compute Z values, which are key parameters for
 both estimating coefficient \& auto-correlation matrix. 
 
 ```{r}
-
-
 par_estimate <- function(y_t, p=1) {
   nObs <- nrow(y_t)  # Number of observations
   K <- ncol(y_t)  # Number of variables
@@ -200,8 +196,8 @@ par_estimate <- function(y_t, p=1) {
   }
 
   # Estimate coefficients using OLS: B_hat = (Z'Z)^(-1) Z'Y
-  B_hat <- solve(t(Z) %*% Z) %*% t(Z) %*% Y  # (K*p + 1) x K matrix
-
+  B_hat_t<- solve(t(Z) %*% Z) %*% t(Z) %*% Y  # (K*p + 1) x K matrix
+  B_hat<-t(B_hat_t)
   return(list(
     Y = Y,
     Z = Z,
@@ -209,36 +205,39 @@ par_estimate <- function(y_t, p=1) {
     T = T
   ))
 }
-
 ```
 
 ```{r}
-estimator<-function(Y, Z, p=1, method = c("standard", "qr", "lsfit")) {
-
-    # Estimator
-     method <- match.arg(method)
-     if(method == "standard"){
-        B_hat <- solve(t(Z) %*% Z, t(Z) %*% Y)
-        B_hat <- t(B_hat)
-     } else if(method == "qr"){
-        qr_decomp <- qr(Z)  
-        B_hat <- qr.coef(qr_decomp, Y)
-     } else if(method == "lsfit"){
-       fit <- lsfit(Z, Y) 
-        B_hat <- fit$coef  
-     } else {
-        stop("Unknown method")
-     }
-    return(list(nu=B_hat[,1], AA=B_hat[,-1]))
-  }
-
+  estimator<-function(Y, Z, p=1, method = c("standard", "qr", "lsfit")) {
+  
+      # Estimator
+       method <- match.arg(method)
+       if(method == "standard"){
+          K <- ncol(Y)
+          Kp<-K*p
+          I_k<-diag(1, ncol(Y))
+          vec_y<-as.vector(Y)
+          B_hat <- solve(t(Z) %*% Z, t(Z) %*% Y)
+          B_hat <- t(B_hat)
+          
+       } else if(method == "qr"){
+          qr_decomp <- qr(Z)  
+          B_hat <- qr.coef(qr_decomp, Y)
+       } else if(method == "lsfit"){
+         fit <- lsfit(Z, Y) 
+          B_hat <- fit$coef  
+       } else {
+          stop("Unknown method")
+       }
+      return(list(nu=B_hat[,1], AA=B_hat[,-1]))
+    }
 ```
-
+  
 
 ## Estimates of the autocovariance function
 
 ```{r}
-est_autocov <- function(y_t, Y, Z, T, p=1){
+  est_autocov <- function(y_t, Y, Z, T, p=1){
     K <- ncol(y_t)
     Kp <- K * p
     I_t <- diag(T)
@@ -259,8 +258,10 @@ est_autocov <- function(y_t, Y, Z, T, p=1){
 }
 
 ```
+
+# Simulation \& Estimation
   
-# Test A
+## Test A
 
 
 ```{r, fig.width=7, fig.height=5}
@@ -269,14 +270,14 @@ set.seed(123)
   A<-matrix(c(0.5, 0.1, 0., 0., 0.1, 0.2, 0., 0.3, 0.3), nrow=3, ncol=3)
   nu<-matrix(c(0.05, 0.02, 0.04), nrow=3)
   Sigma_u <- matrix(c(1.0, 0.2, 0.3, 0.2, 2.0, 0.5, 0.3, 0.5, 3.0), nrow = 3, ncol = 3)
-  nSteps <- 200
+  nSteps <- 10000
   y0 <- matrix(c(0.1, -0.1, 0.2),ncol=ncol(A))
 
 #compute trajectories
 y_t_a<-var_sim(A, nu, Sigma_u, nSteps, y0)  
-plot(y_t_a, main = "VAR(1) Simulation", xlab = "Time", ylab = "y values", col = 1:3, lty = 1)
+plot(y_t_a[1:1000,], main = "VAR(1) Simulation", xlab = "Time", ylab = "y values", col = 1:3, lty = 1)
 ```
-## Multivariate Least Squares Estimators
+### Multivariate Least Squares Estimators
 
 
 ```{r}
@@ -317,7 +318,53 @@ diff_Sigma_u <- Sigma_u_true - Sigma_u_est  # Compute the difference
 print(diff_Sigma_u)
 
 ```
-# Test B
+
+### Variance Sensitivity Analysis
+
+```{r}
+set.seed(123)
+A_intrc<-cbind(nu, A)
+sigma_shrinked<-Sigma_u*0.5
+sigma_scale<-Sigma_u*3
+y_t_a_shrinked<-var_sim(A, nu, sigma_shrinked, nSteps, y0)
+y_t_a_scaled<-var_sim(A, nu, sigma_scale, nSteps, y0)
+#compute the estimates
+y_t_a_shrinked_par<-par_estimate(y_t_a_shrinked)$B_hat
+y_t_a_scaled_par<-par_estimate(y_t_a_scaled)$B_hat
+#compare with original 
+A_true_A<-par_estimate(y_t_a)$B_hat
+#mse function
+mse <- function(A_true, A_est) {
+    A_diff <- A_true - A_est
+    mse <- sqrt(sum(A_diff^2)) / (nrow(A_true) * ncol(A_true))
+    return(mse)
+}
+mse_shrinked<-mse(A_intrc, y_t_a_shrinked_par)
+mse_scaled<-mse(A_intrc, y_t_a_scaled_par)
+mse_normal<-mse(A_intrc, A_true_A)
+summary<-data.frame(
+  transformation=c("Shrinked", "Normal", "Scaled"),
+  MSE=c(mse_shrinked, mse_normal, mse_scaled)
+)
+summary
+
+```
+
+From statistical theory we know that OLS estimator is asymptotically normal with variance equal to the reverse of the Fisher Information Matrix. We know that for 
+VAR process, the Fisher information for the coefficient matrix $B$ is given by
+\[
+\mathcal{I}_B = \Sigma_u^{-1} \otimes (Z^{\top}Z),
+\]
+and its inverse, representing the asymptotic covariance of the OLS estimator, is
+\[
+\operatorname{Var}\!\left(\mathrm{vec}(\hat{B})\right)
+= \Sigma_u \otimes (Z^{\top}Z)^{-1}.
+\]
+This implies that by scaling the covariance matrix of the residuals $\Sigma_u$, we are
+scaling the variance of the OLS estimator proportionally. Therefore, increasing
+the variance of the residuals will lead to a higher mean squared error (MSE) in the estimated coefficients, while decreasing the variance will result in a lower MSE. This relationship highlights the sensitivity of the OLS estimator to changes in the residual variance.
+
+## Test B
 
 Kp-dimensional representation for VAR(p) is defined as following:
 
@@ -354,39 +401,80 @@ u_t \\
 \end{bmatrix}
 \end{align*}
 
-We first start with the simulation
+We first start with the simulation and we also include a variance-sensitivity analysis
+
 ```{r, fig.width=7, fig.height=5}
 # Define parameters for Test B
-set.seed(123)
+
+set.seed(1234567)
 p_B <- 2  # Number of lags for VAR(p)
-nSteps_B <- 100
+nSteps_B <- 10000
 K_B <- 2  # Number of variables (size of y_t)
 Sigma_u_B <- matrix(c(2, 0.3, 0.3, 3), nrow = 2, ncol = 2)
 y0_B <- c(0.5, 2, 1, 5) 
 nu_int_B <- matrix(c(0.5, 0.9), nrow = 2)
 
 A_1 <- matrix(c(0.5, 0.4, 0.1, 0.5), nrow = 2, ncol = 2)
-A_2 <- matrix(c(0, 0.25, 0, 0), nrow = 2, ncol = 2)
+A_2 <- matrix(c(0.15, 0.10, 0.05, 0.20), nrow = 2, ncol = 2)
 AA <- cbind(A_1, A_2)
-
+AA_fin<-cbind(nu_int_B, AA)
 # Simulate time series for Test B
 y_t_B <- var_sim(AA, nu_int_B, Sigma_u_B, nSteps_B, y0_B)
-plot(y_t_B, main = "VAR(2) Simulation", xlab = "Time", ylab = "y values", col = 1:2, lty = 1)
+A_est_B<-par_estimate(y_t_B, p = p_B)$B_hat
+#compute different sigmas
+Sigma_u_shrinked<- 0.5* Sigma_u_B
+# Simulate time series for Test B
+y_t_B_shrinkage <- var_sim(AA, nu_int_B, Sigma_u_shrinked, nSteps_B, y0_B)
+#now we compare with the previous plot
+Sigma_u_expanded<- 3* Sigma_u_B
+y_t_B_expanded <- var_sim(AA, nu_int_B, Sigma_u_expanded, nSteps_B, y0_B)
 
+matplot(y_t_B,  type = "l", main = "VAR(2) Simulation",
+        xlab = "Time", ylab = "y values", col = 1:2, lty = 1)
+matplot(y_t_B_shrinkage, type = "l", main = "VAR(2) Simulation (Shrinkage)",
+        xlab = "Time", ylab = "y values", col = 1:2, lty = 1)
+
+matplot(y_t_B_expanded, type = "l", main = "VAR(2) Simulation (Expansion)",
+        xlab = "Time", ylab = "y values", col = 1:2, lty = 1)
 ```
-and then estimates
+
+
+```{r}
+  
+  # Estimate the parameters for Shrinkage
+  par_B_shrk <- par_estimate(y_t_B_shrinkage, p = p_B)
+  A_hat_shrk <- par_B_shrk$B_hat
+  
+  #we repeat for the Expansion
+  par_B_exp <- par_estimate(y_t_B_expanded, p = p_B)
+  A_hat_exp<- par_B_exp$B_hat # remove intercepts
+  AA_fin
+  A_hat_shrk
+  A_hat_exp
+  #we compute MSE
+  
+  #compute relative true coefficient matrix
+  mse_shrk<- mse(AA_fin, A_hat_shrk)
+  mse_exp<- mse(AA_fin, A_hat_exp)
+  mse_norm<- mse(AA_fin, A_est_B)
+  summary<-data.frame(
+    transformation=c(0.5,1, 3),
+    MSE=c(mse_shrk, mse_norm, mse_exp)
+  )
+  summary
+```
+
+Results confirm what previously mentioned in the Test A. This confirms that this hold for var process with higher order p. 
 
 ```{r}
 # Estimate the parameters for Test B
 par_B <- par_estimate(y_t_B, p = p_B)
 
 # Estimate coefficients
+A_est_B <- par_B$B_hat # A including the intercepts
+#intercept
 test_B <- estimator(par_B$Y, par_B$Z)
-
-# Display estimated coefficients for Test B
-A_est_B <- test_B$AA
 nu_est_B <- test_B$nu
-
 # Estimate autocovariance matrix for Test B
 auto_cov_B <- est_autocov(y_t_B, par_B$Y, par_B$Z, par_B$T, p = p_B)
 
@@ -398,8 +486,8 @@ Coefficient Matrix
 
 ```{r}
 # True and estimated coefficient matrix for Test B
-A_true_B <- AA  # True coefficient matrix
-diff_A_B <- A_true_B - A_est_B  # Difference between true and estimated A
+
+diff_A_B <- AA_fin - A_est_B  # Difference between true and estimated A
 
 print("Difference in coefficient matrix (A):")
 print(diff_A_B)
@@ -450,6 +538,13 @@ print(diff_Sigma_u_B)
 \end{enumerate}
 
 ## VAR(1) Simulation
+
+The first step is to simulate the true coefficient matrix such that the VAR(1) process
+generated will be stable. To do so, we will generate a strictly lower triangular matrix
+such that all eigenvalues are equal to zero. This is ensured by the foundamental theorem of trace: \\
+\begin{equation*}
+\text{trace}(A)= \Sigma_{i=1}^n a_{ii}= \Sigma_{i=1}^n \lambda_i
+\end{equation*}
 
 ```{r}
 set.seed(1234)
@@ -517,12 +612,13 @@ Now we are able to generate a VAR(1) from the function specified at page 3
 sigma_var<- diag(1,5,5)* sd_var
 nu_var <- rep(0, K)  
 y_0 <- rep(0, K)  
-T_sim<-10000
+T_sim<-5000
 var_1<- var_sim(AA=A,nu=nu_var,Sigma_u=sigma_var, nSteps=T_sim, y0=y_0)
+plot(var_1[0:1000,], main = "VAR(1) Simulation",type="l", xlab = "Time", ylab = "y values", col = 1:5, lty = 1)
 ```
 
 
-# Estimation via LASSO
+## Estimation via LASSO
 
 In this step we will apply lasso regression by applying the packages \textit{glmnet}
 
@@ -540,11 +636,11 @@ Y_train <- Y[1:cut_off, , drop = FALSE]
 X_test <- Z[(cut_off + 1):n, , drop = FALSE]
 Y_test <- Y[(cut_off + 1):n, , drop = FALSE]
 # Manual CV over a simple lambda grid (avoid 0 exactly)
-lambdas <- seq(0,1, 0.001)
+lambdas <- seq(0,1, 0.0002)
 val_error <- data.frame(lambda = lambdas, error = NA_real_)
 for (i in seq_along(lambdas)) {
 lmbd <- lambdas[i]
-fit <- glmnet(X_train, Y_train, family = "mgaussian", lambda = lmbd)
+fit <- glmnet(X_train, Y_train,intercept = FALSE, family = "mgaussian", lambda = lmbd)
 pred <- predict(fit, newx = X_test, s = lmbd)[,,1]
 mse_per_series <- colMeans((Y_test - pred)^2)
 val_error$error[i] <- mean(mse_per_series)
@@ -552,12 +648,40 @@ val_error$error[i] <- mean(mse_per_series)
 best_lambda_1 <- val_error$lambda[which.min(val_error$error)]
 best_lambda_1
 ```
-We try with default cross-validation from glmnet
+```{r}
+#analyse coefficients
+fit<-glmnet(
+  x=as.matrix(Z),
+  y = as.matrix(Y),
+  intercept=FALSE,
+  family = "mgaussian",
+  lambda =best_lambda_1
+)
+coef_list <- coef(fit, s = best_lambda_1)
+
+#export coef into a unique matrix 
+A_hat<-matrix(0L, 5,5)
+for(j in 1:5){
+  coef<-as.matrix(coef_list[[j]])
+  A_hat[j,]<-coef[!rownames(coef)=="(Intercept)",1] #intercepts are 0 anyway
+}
+A_hat
+A
+#check theorem 1 whether the euclidean norm of the ture non zero and the estimated one
+# is of the same order as Op(n^{-1/2} log(p)^{1/2})  
+tol<-min(abs(A[A!=0]))/4
+A_hat>tol
+
+```
+From this trial we notice that for large sparse matrices, therefore with lower 
+number of non zero coeffiecients, classical hypertuning methods such as cross-validation might be likely to compute lamba values that are too small. This 
+lead to a smaller discriminations, and therefore higher type I error.
 
 ```{r}
 cv_fit <- cv.glmnet(
   x = as.matrix(Z),
   y = as.matrix(Y),
+  intercept=FALSE, # our process has nu=0, therefore we remove the intercept
   family = "mgaussian"  # var us a mutlivariate regression
 )
 
@@ -565,6 +689,8 @@ plot(cv_fit)
 best_lambda_2 <- cv_fit$lambda.1se # lambda.min brings results that are 
 #far not optimal, and have higher type I error
 best_lambda_2
+best_lambda_2_bis<-cv_fit$lambda.min
+best_lambda_2_bis
 ```
 
 Discrimination of lambda based on the mellow $C_p$ criteria, BIC and AIC defined 
@@ -580,9 +706,7 @@ as follows:
 \hline
 $C_p$   & $\displaystyle \|y - \hat{\mu}\|^{2} + 2\,\tau^{2}\,df$ \\
 AIC     & $\displaystyle N\log(2\pi\tau^{2}) + \frac{\|y - \hat{\mu}\|^{2}}{\tau^{2}} + 2\,df$ \\
-AICc    & $\displaystyle N\log\!\Big(2\pi\,\frac{\|y - \hat{\mu}\|^{2}}{N}\Big) + \frac{N - 2N\,df}{\,N - df - 1\,}$ \\
 BIC     & $\displaystyle N\log(2\pi\tau^{2}) + \frac{\|y - \hat{\mu}\|^{2}}{\tau^{2}} + (\log N)\,df$ \\
-GCV     & $\displaystyle \frac{1}{N}\,\frac{\|y - \hat{\mu}\|^{2}}{(1 - df/N)^{2}}$ \\
 \hline
 \end{tabular}
 \end{table}
@@ -594,53 +718,53 @@ d.f. &= \Sigma_{i=1}^N \frac{\text{cov}(\hat{\mu}_i, y_i)}{\sigma^2}\\
 \end{align*}
 ```{r}
 criteria_df<-function(X,Y, p,steps){
-  n<-nrow(X)
-  #recall that the min lambda for gaussian is C'sigma sqrt(log(p)/n)
-  C_i <- apply(X, 2, function(col) sqrt(sum(col^2)) / sqrt(n))
-  C <- max(C_i)
-    #we compute an initial estimator of sigma from the OLS 
-  beta_ols <- solve(t(X) %*% X) %*% t(X) %*% Y
-  resid <- Y - X %*% beta_ols
-  sigma_hat <- sqrt(sum(resid^2) / (n - p))
-  lambda_0<- C * sigma_hat * sqrt(log(p) / n) # initial lambda 
-   #create a seq of candidate lambda with increments = steps
-  lambda_seq<-seq(lambda_0, 10*lambda_0, by=steps)
-  len_lambda<-length(lambda_seq)
-  #create a data frame to store the results
-  results<-data.frame(
-   lambda_seq=lambda_seq,
-   df=as.numeric(rep(0, len_lambda)),
-   Cp=as.numeric(rep(0, len_lambda)),
-   AIC=as.numeric(rep(0, len_lambda)),
-   BIC=as.numeric(rep(0, len_lambda))
-  )
-  #we compute now the compute estimate by using glmnet 
-  for(i in 1:length(lambda_seq)){
-    fit<-glmnet(
-      X,
-      Y,
-      family = "mgaussian",
-      lambda = lambda_seq[i]
-    )
-    #extract df
-    df<-fit$df
-    results$df[i]<-df 
-    #compute sd
-   
-    Y_hat<-predict(fit, newx=X)[,,1]
-    RSS <- sum((Y - Y_hat)^2)
-    sigma_hat<-RSS /(n-df)
-    #compute criteria
-    results$Cp[i]<-RSS + 2*sigma_hat*df
-    results$AIC[i]<-n*log(2*pi*sigma_hat) + RSS/sigma_hat + 2*df
-    results$BIC[i]<-n*log(2*pi*sigma_hat) + RSS/sigma_hat + (log(n))*df
-  }
-    return(results)
-    }
+n<-nrow(X)
+#recall that the min lambda for gaussian is C'sigma sqrt(log(p)/n)
+C_i <- apply(X, 2, function(col) sqrt(sum(col^2)) / sqrt(n))
+C <- max(C_i)
+#we compute an initial estimator of sigma from the OLS
+beta_ols <- solve(t(X) %*% X) %*% t(X) %*% Y
+resid <- Y - X %*% beta_ols
+sigma_hat <- sqrt(sum(resid^2) / (n - p))
+lambda_0<- C * sigma_hat * sqrt(log(p) / n) # initial lambda
+#create a seq of candidate lambda with increments = steps
+lambda_seq<-seq(lambda_0, 10*lambda_0, by=steps)
+len_lambda<-length(lambda_seq)
+#create a data frame to store the results
+results<-data.frame(
+lambda_seq=lambda_seq,
+df=as.numeric(rep(0, len_lambda)),
+Cp=as.numeric(rep(0, len_lambda)),
+AIC=as.numeric(rep(0, len_lambda)),
+BIC=as.numeric(rep(0, len_lambda))
+)
+#we compute now the compute estimate by using glmnet
+for(i in 1:length(lambda_seq)){
+fit<-glmnet(
+X,
+Y,
+intercept = FALSE,
+family = "mgaussian",
+lambda = lambda_seq[i]
+)
+#extract df
+df<-fit$df
+results$df[i]<-df
+#compute sd
+Y_hat<-predict(fit, newx=X)[,,1]
+RSS <- sum((Y - Y_hat)^2)
+sigma_hat<-RSS /(n-df)
+#compute criteria
+results$Cp[i]<-RSS + 2*sigma_hat*df
+results$AIC[i]<-n*log(2*pi*sigma_hat) + RSS/sigma_hat + 2*df
+results$BIC[i]<-n*log(2*pi*sigma_hat) + RSS/sigma_hat + (log(n))*df
+}
+return(results)
+}
 test<-criteria_df(Z, Y, p=5, steps=0.0001)
 index<-which.min(test$Cp)
 print(test[index,])
-lambda_criterion<-test$lambda_seq[index]
+lambda_criterion<-test$lambda[index]
 ```
 
 ```{r}
@@ -653,10 +777,9 @@ A_hat <- function(coef_list, K) {
   }
   Ahat
 }
-
-#function to compute confusion matrices on true non zeros coefficients
-metrics <- function(A_true, A_hat, tol = 5e-3) {
-  S_true <- abs(A_true) > tol
+#oracle property: tol level 
+metrics <- function(A_true, A_hat, tol = 5e-3) { # where tol ~ 1/4 of the minimum non zero coefficient
+  S_true <- abs(A_true) > 0
   S_est  <- abs(A_hat)  > tol
 
   TP <- sum(S_true & S_est)
@@ -676,13 +799,13 @@ metrics <- function(A_true, A_hat, tol = 5e-3) {
   c(TypeI = FPR, TypeII = FNR, Recall = Rec, Precision = Prec, F1 = F1, MSE = MSE)
 }
 
-
-
 #fit the model with the tuning parameters
-lambda_cand<-c(best_lambda_1,best_lambda_2,lambda_criterion, 0.03)
+lambda_cand<-c(best_lambda_1,best_lambda_2_bis,best_lambda_2, lambda_criterion, 0.03)
+
 fit_opt<-glmnet(
-  x=as.matrix(Z),
-  y = as.matrix(Y),
+  x<-as.matrix(Z),
+  y<-as.matrix(Y),
+  intercept=FALSE,
   family = "mgaussian",
   lambda =lambda_cand
 )
@@ -708,15 +831,17 @@ results<-lapply(seq_along(lambda_cand), function(indx){
 })
 table_results<- lapply(results, `[[`, "summary") %>%
   do.call(rbind, .)
-row.names(table_results)<-c("Manual CV", "glmnet CV", "Criterion df", "Lambda = 0.03")
+row.names(table_results)<-c("Manual CV", "CV Min","CV 1s.d.", "Criterion df", "Lambda = 0.03")
 table_results
+#we will print as well all the estimated matrices
+results[[1]]$A_est #visualise estiamte with lambda from manual cv
 results[[2]]$A_est #visualise estiamte with lambda from cv.glmnet
+results[[3]]$A_est #visualise estiamte with lambda 1 s.d. away from the minimum
 results[[4]]$A_est #visualise results from the arbitrary larger lambda
 A
 
 ```
-From the results we can see that the best option with the lowest type I error is
-glmnet CV function with lambda 1 s.d. away from the minimum lambda values. 
+From the table above we notice that between the different hypertuning methods, CV 1 s.d. selects a lambda which is 1 s.d. from the minimum value, therefore leading to a sparser solution. This results in a lower Type I error, while keeping a reasonable Type II error. For this reason, in our monte carlo simulation, we will use this method to select the tuning parameter.
 
 ## Monte Carlo Simulation
 
@@ -727,10 +852,12 @@ the coefficient matrix using LASSO. To optimise the tuning parameter,
 we will use the built in function \textit{cv.glmnet}, and select the value that is 1 s.d. away from the minimum. Finally, we will compute the Type I and Type II error rates for 
 each replication, and summarize the results across all replications.
 
+For the sake of saving GPU and computational time, I have let run the simulation up to 1000 times. 
+
 ```{r}
 #define functions that returns 
-error_function <- function(tol, coef, tr_coef){  # coef = A_hat, tr_coef = A_true
-  S_true <- abs(tr_coef) > tol
+error_function <- function(tol,coef, tr_coef){  # coef = A_hat, tr_coef = A_true
+  S_true <- abs(tr_coef) > 0
   S_est  <- abs(coef)    > tol
 
   TP <- sum(S_true & S_est)
@@ -748,11 +875,11 @@ error_function <- function(tol, coef, tr_coef){  # coef = A_hat, tr_coef = A_tru
 }
   
   
-MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100, 
-                     base_seed = 123, T_sim = 1000, tol = 5e-3) {
+MC_var_1 <- function(K, spar, sd, nu, tol= 5e-3,max_tries = 1000, nrep = 100, 
+                     base_seed = 123, T_sim = 1000) {
 
   seeds <- base_seed + seq_len(nrep) - 1
-
+  
   # storage
   A_list     <- vector("list", nrep)   # store true A per replication
   Ahat_list  <- vector("list", nrep)   # store estimated A_hat
@@ -771,9 +898,9 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100,
 
     # (1) draw a stable sparse A
     A_true <- A_sim(K, spar = spar, sd = sd, max_tries = max_tries)
-
+    tol<-  min(abs(A_true[A_true!=0]))/2
     # (2) simulate VAR(1)
-    sigma_var <- diag(1, K, K)
+    sigma_var <-sd * diag(1, K, K)
     nu_var    <- rep(nu, length.out = K)
     y_0       <- rep(0, K)
     var_1 <- var_sim(AA = A_true, nu = nu_var, Sigma_u = sigma_var, 
@@ -784,11 +911,12 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100,
     Z <- coredata(var_1)[-nrow(var_1),] # y_{t-1}
 
     # (4) pick lambda via CV
-    cv_fit <- cv.glmnet(x = as.matrix(Z), y = as.matrix(Y), family = "mgaussian")
-    lam <- cv_fit$lambda.1se
+    cv_fit <- cv.glmnet(x = as.matrix(Z), y = as.matrix(Y), intercept=FALSE,
+                        family = "mgaussian")
+    lam <- cv_fit$lambda.1se  # 1 s.d. away from min
 
     # (5) fit model and extract A_hat
-    fit_best  <- glmnet(x = as.matrix(Z), y = as.matrix(Y), 
+    fit_best  <- glmnet(x = as.matrix(Z), y = as.matrix(Y), intercept=FALSE,
                         family = "mgaussian", lambda = lam)
     coef_list <- coef(fit_best)
     
@@ -830,25 +958,36 @@ MC_var_1 <- function(K, spar, sd, nu, max_tries = 1000, nrep = 100,
   )
 }
 
-  out_5 <- MC_var_1(K = 5, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
-  out_5$summary
-
 ```
-# Increasing number of K
+
+```{r}
+out_5 <- MC_var_1(K = 5, spar = 0.1, sd = 0.1, nu = 0,tol=5e-3, nrep = 1000, T_sim = 1000)
+out_5$summary
+typeI<-round(out_5$summary[1,2],3)
+```
+From this simulation in small dimensions, we notice that LASSO has a good performance 
+with respect to the Type I error, $\alpha = `r typeI`\%$. 
+This implies that LASSO has a low probability of falsely identifying a zero coefficient  as non-zero. 
+On the other hand, type II error is high, meaning there is high chance that the model fails to detect a truly non-zero coefficient. Nevertheless, precision remains high,
+implying that the relevant coefficients, those on the right upper triangle, are correctly identified most of the time.
+
+### Increasing number of K
 
 We first try with K=10
 ```{r}
-out_10 <- MC_var_1(K = 10, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out_10 <- MC_var_1(K = 10, tol=5e-3, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
 out_10$summary
 
 ```
+As dimension increase, we notice that the type I error increases steeply, meaning that the model is likely to mistakenly identify a zero ceofficient as non-zero. On top of that, the precision dropped significantly, indicating that a substantial portion of the identified non-zero coefficients are false positives. This suggests that as the dimensionality of the VAR(1) process increases, especially with sparse matrix LASSO struggles to distinguish relevant coefficients diminishes, leading to a higher rate of incorrect selections.
+
 
 We first try with K=15
 ```{r}
 
-out_15 <- MC_var_1(K = 15, spar = 0.1, sd = 0.1, nu = 0, nrep = 1000, T_sim = 1000)
+out_15 <- MC_var_1(K = 15, spar = 0.1, sd = 0.1, nu = 0, tol=5e-3 ,nrep = 1000, T_sim = 1000)
 out_15$summary
 ```
-
+From this simulation with $K = 15$, we notice that the Type I error increases sharply ($62.6%$), meaning that the model often identifies zero coefficients as non-zero. On the other hand, the Type II error remains low ($7.4%$), showing that LASSO is able to detect most of the truly non-zero coefficients. However, precision drops to about $52.5%$, indicating that many of the identified coefficients are false positives. This suggests that in higher dimensions, LASSO becomes less selective, including more irrelevant variables in the model.
 
 
