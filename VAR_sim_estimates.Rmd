@@ -556,8 +556,8 @@ stab_test <- function(kp, A, tol = 1e-8)
   eig <- eigen(A, only.values = TRUE)$values  # computing the eigenvalues
   
   for (i in 1:length(eig)) {     
-    if (Mod(eig[i]) >= 1 - tol) { # Mod also handles complex numbers
-      return(FALSE)               # <-- fixed typo "returm"
+    if (Mod(eig[i]) >= 1 - tol) { 
+      return(FALSE)          
     }
   }
   return(TRUE)

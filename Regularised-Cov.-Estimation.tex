@@ -1,0 +1,276 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Regularised Cov. Estimation},
+  pdfauthor={Jacopo Lussetti},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Regularised Cov. Estimation}
+\author{Jacopo Lussetti}
+\date{2025-10-27}
+
+\begin{document}
+\maketitle
+
+This report is aiming at replicating the methodology by
+\cite{basu2015regularized} on estimating covaiane matrices and their
+precision matrices for high-dimensional data.
+
+\section{Exercise 1}\label{exercise-1}
+
+\#Data Generation To simulate the stochastic regression model, we will
+generate data from our code that allows to randomly generate an uppper
+triangle coefficient matrix. Then we will simulate the data with a
+VAR(1) model. Then we will proceed to use a Gaussian VAR(1) model
+\textbackslash{}
+\(X^t=AX^{t-1} + \epsilon^t, \quad \epsilon^t \overset{\text{i.i.d.}}{\sim}\mathcal{N}(\alpha I_{Kp})\),
+where \(\alpha =0.2\)
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\#we define first of all the various functions}
+\DocumentationTok{\#\#Simulation upper triangular matrix}
+\DocumentationTok{\#\#\# To ensure that process is stable, we need to check the abs of eigenvalue}
+\NormalTok{stab\_test }\OtherTok{\textless{}{-}} \ControlFlowTok{function}\NormalTok{(kp, A, }\AttributeTok{tol =} \FloatTok{1e{-}8}\NormalTok{)}
+\NormalTok{\{}
+  \ControlFlowTok{if}\NormalTok{ (}\SpecialCharTok{!}\FunctionTok{is.matrix}\NormalTok{(A) }\SpecialCharTok{||} \FunctionTok{nrow}\NormalTok{(A) }\SpecialCharTok{!=} \FunctionTok{ncol}\NormalTok{(A)) \{}
+    \FunctionTok{stop}\NormalTok{(}\StringTok{"The matrix is not square"}\NormalTok{)}
+\NormalTok{  \}}
+\NormalTok{  eig }\OtherTok{\textless{}{-}} \FunctionTok{eigen}\NormalTok{(A, }\AttributeTok{only.values =} \ConstantTok{TRUE}\NormalTok{)}\SpecialCharTok{$}\NormalTok{values  }\CommentTok{\# computing the eigenvalues}
+  
+  \ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\FunctionTok{length}\NormalTok{(eig)) \{     }
+    \ControlFlowTok{if}\NormalTok{ (}\FunctionTok{Mod}\NormalTok{(eig[i]) }\SpecialCharTok{\textgreater{}=} \DecValTok{1} \SpecialCharTok{{-}}\NormalTok{ tol) \{ }
+      \FunctionTok{return}\NormalTok{(}\ConstantTok{FALSE}\NormalTok{)               }
+\NormalTok{    \}}
+\NormalTok{  \}}
+  \FunctionTok{return}\NormalTok{(}\ConstantTok{TRUE}\NormalTok{)}
+\NormalTok{\}}
+
+\CommentTok{\#function to compute companion matrix}
+\NormalTok{comp\_mtrx }\OtherTok{\textless{}{-}} \ControlFlowTok{function}\NormalTok{(AA)\{}
+    \DocumentationTok{\#\# AA is a K x Kp matrix, so we are able to derive p in the following way}
+\NormalTok{    K }\OtherTok{\textless{}{-}} \FunctionTok{nrow}\NormalTok{(AA)}
+\NormalTok{    Kp }\OtherTok{\textless{}{-}} \FunctionTok{ncol}\NormalTok{(AA)      }
+\NormalTok{    p }\OtherTok{\textless{}{-}}\NormalTok{ Kp}\SpecialCharTok{/}\NormalTok{K}
+    
+    \CommentTok{\# Create the empty companion matrix Kp x Kp}
+\NormalTok{    C }\OtherTok{\textless{}{-}} \FunctionTok{matrix}\NormalTok{(}\DecValTok{0}\NormalTok{, }\AttributeTok{nrow=}\NormalTok{Kp, }\AttributeTok{ncol=}\NormalTok{Kp)}
+
+\NormalTok{    C[}\DecValTok{1}\SpecialCharTok{:}\NormalTok{K,] }\OtherTok{\textless{}{-}}\NormalTok{ AA}
+    
+    \CommentTok{\# Add ones on the K{-}th sub{-}diagonal}
+    \ControlFlowTok{if}\NormalTok{ (p}\SpecialCharTok{\textgreater{}}\DecValTok{1}\NormalTok{)}
+\NormalTok{        C[(K}\SpecialCharTok{+}\DecValTok{1}\NormalTok{)}\SpecialCharTok{:}\NormalTok{Kp, }\DecValTok{1}\SpecialCharTok{:}\NormalTok{(Kp}\SpecialCharTok{{-}}\NormalTok{K)] }\OtherTok{\textless{}{-}} \FunctionTok{diag}\NormalTok{(Kp }\SpecialCharTok{{-}}\NormalTok{ K)}
+    \FunctionTok{return}\NormalTok{(C)}
+\NormalTok{\}}
+\CommentTok{\#}
+
+\DocumentationTok{\#\# VAR(p) process Simulator}
+\NormalTok{var\_sim }\OtherTok{\textless{}{-}} \ControlFlowTok{function}\NormalTok{(AA, nu, Sigma\_u, nSteps, y0) \{}
+\NormalTok{    K }\OtherTok{\textless{}{-}} \FunctionTok{nrow}\NormalTok{(Sigma\_u)}
+\NormalTok{    Kp }\OtherTok{\textless{}{-}} \FunctionTok{ncol}\NormalTok{(AA)}
+\NormalTok{    p }\OtherTok{\textless{}{-}}\NormalTok{ Kp}\SpecialCharTok{/}\NormalTok{K}
+        
+    \ControlFlowTok{if}\NormalTok{ (p }\SpecialCharTok{\textgreater{}} \DecValTok{1}\NormalTok{) \{}
+\NormalTok{        C }\OtherTok{\textless{}{-}} \FunctionTok{comp\_mtrx}\NormalTok{(AA) }\CommentTok{\# form the  companion matrix of the var(p) process}
+\NormalTok{    \} }\ControlFlowTok{else}\NormalTok{ \{}
+\NormalTok{        C }\OtherTok{\textless{}{-}}\NormalTok{ AA  }
+\NormalTok{    \}}
+\NormalTok{    y\_t }\OtherTok{\textless{}{-}} \FunctionTok{matrix}\NormalTok{(}\DecValTok{0}\NormalTok{, }\AttributeTok{nrow =}\NormalTok{  nSteps, }\AttributeTok{ncol=}\NormalTok{Kp) }\CommentTok{\#trajectories matrix nSteps x Kp}
+\NormalTok{    y\_t[}\DecValTok{1}\NormalTok{, }\DecValTok{1}\SpecialCharTok{:}\NormalTok{Kp] }\OtherTok{\textless{}{-}}\NormalTok{ y0 }\CommentTok{\#add initial value to initiate the simulation}
+\NormalTok{    noise }\OtherTok{\textless{}{-}} \FunctionTok{mvrnorm}\NormalTok{(}\AttributeTok{n =}\NormalTok{ nSteps, }\AttributeTok{mu =} \FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{, K), }\AttributeTok{Sigma =}\NormalTok{ Sigma\_u) }\CommentTok{\#assuming that }
+    \CommentTok{\#residuals follow a multivariate normal distribution    }
+    
+    \ControlFlowTok{for}\NormalTok{ (t }\ControlFlowTok{in} \DecValTok{2}\SpecialCharTok{:}\NormalTok{nSteps) \{}
+\NormalTok{        y\_t[t, ] }\OtherTok{\textless{}{-}}\NormalTok{ C }\SpecialCharTok{\%*\%}\NormalTok{ y\_t[t}\DecValTok{{-}1}\NormalTok{, ]}
+\NormalTok{        y\_t[t, }\DecValTok{1}\SpecialCharTok{:}\NormalTok{K] }\OtherTok{\textless{}{-}}\NormalTok{ y\_t[t, }\DecValTok{1}\SpecialCharTok{:}\NormalTok{K] }\SpecialCharTok{+}\NormalTok{ nu }\SpecialCharTok{+}\NormalTok{ noise[t,]}
+\NormalTok{    \}}
+    
+\NormalTok{    y\_t }\OtherTok{\textless{}{-}} \FunctionTok{zoo}\NormalTok{(y\_t[,}\DecValTok{1}\SpecialCharTok{:}\NormalTok{K], }\DecValTok{1}\SpecialCharTok{:}\NormalTok{nSteps)  }
+    \FunctionTok{return}\NormalTok{(y\_t)}
+\NormalTok{  \}}
+\end{Highlighting}
+\end{Shaded}
+
+We will now replicate figure 1 from \cite{basu2015regularized}. He
+provided the following values for the spectral radius \(\rho(A)\) and
+fixed diagonal elements of the generating coefficient matrix \(A\) to
+generate the VAR(1) process.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{c|c}
+$\alpha$ & $\rho(A)$ \\
+\hline
+0.2 & 0.2 \\
+0.2 & 0.92 \\
+0.2 & 0.96 \\
+0.2 & 1 \\
+0.2 & 1.01 \\
+0.2 & 1.02 \\
+0.2 & 1.03 \\
+\end{tabular}
+\end{table}
+
+To ensure that \(\rho(A)\) is fixed to the desired value, we will scale
+the matrix \(A\) by the following scalar:
+
+\begin{align*}
+\|A\|_2 &= \sqrt{\rho(A^T A)} = a \\
+\alpha &= \sqrt{\frac{a}{\rho(A^T A)}} = \frac{\sqrt{a}}{\sqrt{\rho(A^T A)}}
+\end{align*}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\#we first simulate the coef for the predictors}
+\NormalTok{K}\OtherTok{\textless{}{-}}\DecValTok{200}
+\NormalTok{A\_coef}\OtherTok{\textless{}{-}}\FunctionTok{matrix}\NormalTok{(}\DecValTok{0}\DataTypeTok{L}\NormalTok{,}\AttributeTok{nrow=}\NormalTok{K, }\AttributeTok{ncol=}\NormalTok{K)}
+\CommentTok{\#we select the upper triangle element}
+\NormalTok{d}\OtherTok{\textless{}{-}}\FunctionTok{dim}\NormalTok{(A\_coef)}
+\NormalTok{upper\_indx}\OtherTok{\textless{}{-}} \FunctionTok{which}\NormalTok{(}\FunctionTok{row}\NormalTok{(A\_coef)}\SpecialCharTok{\textless{}}\FunctionTok{col}\NormalTok{(A\_coef)) }\CommentTok{\#index upper triangle element}
+\CommentTok{\#we need to ensure that the spectral norm is fixed to a certain value. }
+\CommentTok{\#we consider the the first case when 0.2 from figure 1}
+\NormalTok{t}\OtherTok{\textless{}{-}}\DecValTok{0}
+\ControlFlowTok{repeat}\NormalTok{\{}
+\NormalTok{  A\_coef[upper\_indx]}\OtherTok{\textless{}{-}}\FunctionTok{rnorm}\NormalTok{(}\FunctionTok{length}\NormalTok{(upper\_indx), }\AttributeTok{mean=}\DecValTok{0}\NormalTok{, }\AttributeTok{sd=}\FloatTok{0.2}\NormalTok{)}
+  \CommentTok{\#we add diagonal values=0.2 as requested from the paper}
+  \FunctionTok{diag}\NormalTok{(A\_coef)}\OtherTok{\textless{}{-}}\FloatTok{0.2}
+  \CommentTok{\#check spectral norm}
+\NormalTok{  spec\_norm}\OtherTok{\textless{}{-}}\FunctionTok{sqrt}\NormalTok{(}\FunctionTok{max}\NormalTok{(}\FunctionTok{eigen}\NormalTok{(}\FunctionTok{t}\NormalTok{(A\_coef)}\SpecialCharTok{\%*\%}\NormalTok{A\_coef)}\SpecialCharTok{$}\NormalTok{values))}
+  \ControlFlowTok{if}\NormalTok{ (spec\_norm}\FloatTok{{-}0.2} \SpecialCharTok{\textless{}}\FloatTok{1e{-}2}\NormalTok{)\{}
+    \ControlFlowTok{break}
+\NormalTok{  \}}
+  
+\NormalTok{  t}\OtherTok{\textless{}{-}}\NormalTok{t}\SpecialCharTok{+}\DecValTok{1}
+  \ControlFlowTok{if}\NormalTok{(t}\SpecialCharTok{\textgreater{}}\DecValTok{100}\NormalTok{)\{}
+    \ControlFlowTok{break}
+\NormalTok{  \}}
+\NormalTok{\}}
+\CommentTok{\#we check also stability}
+\NormalTok{prod}\OtherTok{\textless{}{-}}\FunctionTok{t}\NormalTok{(A\_coef)}\SpecialCharTok{\%*\%}\NormalTok{A\_coef}
+\NormalTok{rho}\OtherTok{\textless{}{-}}\FunctionTok{max}\NormalTok{(}\FunctionTok{abs}\NormalTok{(}\FunctionTok{eigen}\NormalTok{(prod)}\SpecialCharTok{$}\NormalTok{values))}
+\FunctionTok{print}\NormalTok{(}\FunctionTok{sqrt}\NormalTok{(rho))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 4.528965
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\#now we co}
+\NormalTok{nu}\OtherTok{\textless{}{-}}\FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{,K)}
+\NormalTok{cov\_res}\OtherTok{\textless{}{-}}\FunctionTok{diag}\NormalTok{(}\FloatTok{0.5}\NormalTok{, }\AttributeTok{nrow=}\NormalTok{K, }\AttributeTok{ncol=}\NormalTok{K)}
+\NormalTok{y\_0}\OtherTok{\textless{}{-}}\FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{,K)}
+\CommentTok{\#trial  for small n, to then complete the simulation}
+\NormalTok{predictor}\OtherTok{\textless{}{-}}\FunctionTok{var\_sim}\NormalTok{(}\AttributeTok{AA=}\NormalTok{A\_coef, }\AttributeTok{nu=}\NormalTok{nu, }\AttributeTok{Sigma\_u=}\NormalTok{cov\_res, }\AttributeTok{nSteps=}\DecValTok{50}\NormalTok{, }\AttributeTok{y0=}\NormalTok{y\_0)}
+\CommentTok{\#now we generate the sparse true coef matrix }
+\CommentTok{\# k\textless{}{-}15 \# 15 numbers different from zero}
+\CommentTok{\# set.seed(1234)}
+\CommentTok{\# beta\_star\textless{}{-} matrix(0L, nrow=k, ncol=k}
+\end{Highlighting}
+\end{Shaded}
+
+\printbibliography
+
+\end{document}
