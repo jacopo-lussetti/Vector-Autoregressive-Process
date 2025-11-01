@@ -688,7 +688,7 @@ for(a_idx in seq_along(alpha)) {
         intercept = FALSE, #we remove the intercept as we have 
         #nu=0 in the original model.
         alpha = 1, #this ensure we applied a LASSO regerssion
-        nfolds = 10,
+        nfolds = 8,
         grouped = FALSE
       )
       
