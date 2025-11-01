@@ -7,9 +7,10 @@ output:
     citation_package: natbib
   html_document:
     citation_package: natbib
-headers-includes:
-- \usepackage{amsmath}
-- \usepackage{amssymb}
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{natbib}
 bibliography: reference.bib
 ---
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
@@ -30,24 +31,77 @@ library(Matrix)
 This report is aiming at replicating the methodology by @basu2015regularized
 on estimating covariance matrices and their precision matrices for high-dimensional data.
 
-Previous studies on the covariance estimator(@chen2013covandprecision)
+Previous studies on the covariance estimator(@chen2013covandprecision) 
+found out that the functional dependence measure scale
+with the spectral radius $\rho(A)$. 
+We define functional dependence measure scale quantify the magnitude of time 
+dependency between current and past observations. More formally, 
+
+\begin{equation}
+\theta_{i,w,j}=\|Z_{ji}-Z'_{ji} \|_w= \left(\mathbb{E} \lvert Z_{ji}-Z'_{ji} \lvert^w \right)^{\frac{1}{w}}
+\end{equation}
+
+where $Z_{ji}$ are stationary process, and $Z'_{ji}=g(\mathcal{F'_i})$ with 
+the filtration being defined as $\mathcal{F}^i(\ldots e_{-1}, e'_0, e_1, \ldots e_i)$,
+for $e'_0$ is an independent copy of the original innovation. 
+Additionally, we also consider the Short-Range Dependence:
+
+\begin{equation}
+  \Theta_{mw}=\max_{1\leq j \leq p}\sum_{\ell=m}^{\infty}\theta_{i,w,j}<\infty
+\end{equation}
+
+In example 2.2 on stationary linear processes, he considers $\textbf{z}_i=\sum_{m=0}^{\infty}A_m e_{i-m}$
+with $\Sigma_e= \mathbb{E}(\textbf{e}_i\textbf{e}_i^T),  \Sigma_{z_i}=\sum_{m=0}^{\infty}A_m\Sigma_eA_m^T$.
+We assume that $e_{ij}$ i iid with mean 0, variance 1, $A_i=(a_{i,jk})_{1 \leq j, k \leq q} \quad \text{s.t.} \max_{j \leq p }\sum_{k=1}^p a_{i,jk}^2= \mathcal{O}(i^{-2 -2 \gamma})$. Then by the Rosenthal's theory:
+$$
+\mathbb{E}\left[\left|\sum_{i=1}^n X_i\right|^p\right] \leq C_p \left( \sum_{i=1}^n \mathbb{E}[|X_i|^p] + \left(\sum_{i=1}^n \mathbb{E}[X_i^2]\right)^{p/2} \right)
+$$
+
+
+In this setting, for the $j$th component we have 
+$Z_{ji}=\sum_{m=0}^{\infty}\sum_{k=1}^p a_{m,jk} e_{k,i-m}$, 
+and the coupled version differs only in the innovation at time $0$:
+$$
+Z_{ji}-Z'_{ji}=\sum_{k=1}^p a_{i,jk}(e_{k0}-e'_{k0}).
+$$
+Applying Rosenthal’s inequality to the independent summands 
+$X_k=a_{i,jk}(e_{k0}-e'_{k0})$ gives
+$$
+\mathbb{E}\!\left|\sum_{k}X_k\right|^{w}
+\le C_w\!\left(
+\sum_{k}|a_{i,jk}|^{w}+\Big(\sum_{k}a_{i,jk}^2\Big)^{w/2}
+\right),
+$$
+and therefore
+$$
+\theta_{i,w,j}=\|Z_{ji}-Z'_{ji}\|_w
+\le C_w\Big(\sum_{k=1}^p a_{i,jk}^2\Big)^{1/2}.
+$$
+Under the assumption 
+$\max_{j\le p}\sum_{k=1}^p a_{i,jk}^2=\mathcal{O}(i^{-2-2\gamma})$,
+we obtain $\theta_{i,w,j}=\mathcal{O}(i^{-1-\gamma})$ and hence
+$$
+\Theta_{mw}
+=\max_{1\le j\le p}\sum_{\ell=m}^{\infty}\theta_{\ell,w,j}
+=\mathcal{O}(m^{-\gamma}),
+$$
+A special case of equation 1 is VAR(1) process $\textbf{z}_i=A \textbf{z}_{t-1}+\textbf{e}_i$, where A is a real matrix with spectral norm $\rho(A)<1$, and the functional dependence measure $\theta_{i,2q,j}=\mathcal{O}(\rho(A)^i)$
 
 # Exercise 1 
 
-#Data Generation
+##Data Generation
 To simulate the stochastic regression model, we will generate data from our code
 that allows to randomly generate an uppper triangle coefficient matrix. Then we
 will simulate the data with a VAR(1) model. Then we will proceed to use a 
 Gaussian VAR(1) model \\ 
 
 $$
-X^t=AX^{t-1} + \epsilon^t, \quad \epsilon^t \overset{\text{i.i.d.}}{\sim}\mathcal{N}(0, \sigma^2 I_{Kp}), \quad \text{and}
+  X^t=AX^{t-1} + \epsilon^t, \quad \epsilon^t \overset{\text{i.i.d.}}{\sim}\mathcal{N}(0, \sigma^2 I_{Kp}), \quad \text{and}
 \quad \text{diag}(A) =0.2
 $$
-We first define a series of equations that we will use throughout the simulation.
-To ensure that \mathcal{l}2-norm of the coefficient matrix is equal to a target value, we apply the following procedure.
-
-
+  We first define a series of equations that we will use throughout the simulation.
+To ensure that l2-norm of the coefficient matrix is equal to a target
+value, we apply the following procedure.
 ```{r}
 #we define first of all the various functions
 ##Simulation upper triangular matrix
@@ -76,56 +130,56 @@ comp_mtrx <- function(AA,p ){ #AA is the cbind of covariate matrices
   C[1:K,1:Kp]<-AA
   C[(K+1):Kp,1:(K*(p-1))]<- diag(1,nrow=K, ncol=K )
   return(C)
- }
+}
 
 #
-  est_autocov <- function(y_t, Y, Z, T, p=1){
-    K <- ncol(y_t)
-    Kp <- K * p
-    I_t <- diag(T)
-
-    # QR decomposition of Z to avoid singularity issues
-    qr_decomp <- qr(Z)
-    Q <- qr.Q(qr_decomp)
-    P_Z <- Q %*% t(Q)  # Projection matrix
-
-    # Compute bias-corrected covariance
-    bias_sigma <- 1/T * t(Y) %*% (I_t - P_Z) %*% Y
-
-    # Degrees of freedom correction
-    d.f. <- T / (T - Kp - 1)
-    unbiased <- d.f. * bias_sigma  # Corrected covariance estimate
-
-    return(unbiased)
+est_autocov <- function(y_t, Y, Z, T, p=1){
+  K <- ncol(y_t)
+  Kp <- K * p
+  I_t <- diag(T)
+  
+  # QR decomposition of Z to avoid singularity issues
+  qr_decomp <- qr(Z)
+  Q <- qr.Q(qr_decomp)
+  P_Z <- Q %*% t(Q)  # Projection matrix
+  
+  # Compute bias-corrected covariance
+  bias_sigma <- 1/T * t(Y) %*% (I_t - P_Z) %*% Y
+  
+  # Degrees of freedom correction
+  d.f. <- T / (T - Kp - 1)
+  unbiased <- d.f. * bias_sigma  # Corrected covariance estimate
+  
+  return(unbiased)
 }
 
 ## VAR(p) process Simulator
- var_sim <- function(AA, nu, Sigma_u, nSteps, y0) {
-    K <- nrow(Sigma_u)
-    Kp <- ncol(AA)
-    p <- Kp/K
-        
-    if (p > 1) {
-        C <- comp_mtrx(AA) # form the  companion matrix of the var(p) process
-    } else {
-        C <- AA  
-    }
-    y_t <- matrix(0, nrow =  nSteps, ncol=Kp) #trajectories matrix nSteps x Kp
-    y_t[1, 1:Kp] <- y0 #add initial value to initiate the simulation
-    noise <- mvrnorm(n = nSteps, mu = rep(0, K), Sigma = Sigma_u) #assuming that 
-    #residuals follow a multivariate normal distribution    
-    
-    for (t in 2:nSteps) {
-        y_t[t, ] <- C %*% y_t[t-1, ]
-        y_t[t, 1:K] <- y_t[t, 1:K] + nu + noise[t,]
-    }
-    
-    y_t <- zoo(y_t[,1:K], 1:nSteps)  
-    return(y_t)
- }
- 
- #compute the largest eigenvalues of A^TA, used to compute l2 norm 
- 
+var_sim <- function(AA, nu, Sigma_u, nSteps, y0) {
+  K <- nrow(Sigma_u)
+  Kp <- ncol(AA)
+  p <- Kp/K
+  
+  if (p > 1) {
+    C <- comp_mtrx(AA) # form the  companion matrix of the var(p) process
+  } else {
+    C <- AA  
+  }
+  y_t <- matrix(0, nrow =  nSteps, ncol=Kp) #trajectories matrix nSteps x Kp
+  y_t[1, 1:Kp] <- y0 #add initial value to initiate the simulation
+  noise <- mvrnorm(n = nSteps, mu = rep(0, K), Sigma = Sigma_u) #assuming that 
+  #residuals follow a multivariate normal distribution    
+  
+  for (t in 2:nSteps) {
+    y_t[t, ] <- C %*% y_t[t-1, ]
+    y_t[t, 1:K] <- y_t[t, 1:K] + nu + noise[t,]
+  }
+  
+  y_t <- zoo(y_t[,1:K], 1:nSteps)  
+  return(y_t)
+}
+
+#compute the largest eigenvalues of A^TA, used to compute l2 norm 
+
 lmda_max<-function(A,k){#k is the number of largest eigenvalues to compute
   s1<-svds(A,k=k, nu=0, nv=0)$d[1]
   return(s1)
@@ -163,7 +217,8 @@ scaled_A_matrix<- function(A,target, tol=1e-6, max_k=1000){
   return(A_scaled)
 }
 ```
-We will now replicate figure 1 from \cite{basu2015regularized}. He provided the following values for the spectral radius $\rho(A)$ and fixed diagonal elements of the generating coefficient matrix $A$ to generate the VAR(1) process.
+
+We will now replicate figure 1 from @basu2015regularized. He provided the following values for the spectral radius $\rho(A)$ and fixed diagonal elements of the generating coefficient matrix $A$ to generate the VAR(1) process.
 
 \begin{table}[h!]
 \centering
@@ -181,8 +236,9 @@ $\alpha$ & $\rho(A)$ \\
 \end{table}
 
 
-We will first compute a specific case, in particular for $\langle 0.2, 0.2 \rangle$ to then generalise the code for the other cases.
-
+We will first compute a specific case, in particular for $\langle 0.2, 0.2 \rangle$
+to then generalise the code for the other cases.
+  
 ```{r}
 K<-200
 n_mc <- 200  # Number of Monte Carlo iterations
@@ -244,35 +300,36 @@ lasso_errors<-rep(0,nsteps)
 A_coef_sim<-matrix(0L,nrow=K, ncol=K)
 diag(A_coef_sim)<-0.2
 for(i in 1:nsteps){
-upper_indx<- which(row(A_coef_sim)<col(A_coef_sim))
-A_coef_sim[upper_indx]<-rnorm(length(upper_indx), mean=0, sd=0.2) 
-#now we normalised the coef matrix
-rho_val<-max(abs(eigen(prod_coef)$values))
-a<-0.2
-scalar<-a/sqrt(rho_val)
-A_scaled_sim<-A_coef_sim*scalar
-#simulate the data
-pred_sim<-var_sim(A_scaled_sim, nu=nu, Sigma_u=Cov_epsilon, nSteps=200, y0=y_0)
-#response variable
-y_t_sim<- as.numeric(pred_sim %*% beta_star) + rnorm(200, mean=0, sd=1)
-#LASSO regression
-lasso_reg_sim<-cv.glmnet(
-  x=as.matrix(pred_sim),
-  y=y_t_sim,
-  type.measure="mse",
-  alpha=1,
-  nfolds=100,
-  family="gaussian", 
-  grouped=FALSE
-)
-beta_lasso_sim<-coef(lasso_reg_sim)
-#LASSO error
-lasso_errors[i]<-sqrt(sum((beta_lasso_sim[-1]-beta_star)^2))
+  upper_indx<- which(row(A_coef_sim)<col(A_coef_sim))
+  A_coef_sim[upper_indx]<-rnorm(length(upper_indx), mean=0, sd=0.2) 
+  #now we normalised the coef matrix
+  rho_val<-max(abs(eigen(prod_coef)$values))
+  a<-0.2
+  scalar<-a/sqrt(rho_val)
+  A_scaled_sim<-A_coef_sim*scalar
+  #simulate the data
+  pred_sim<-var_sim(A_scaled_sim, nu=nu, Sigma_u=Cov_epsilon, nSteps=200, y0=y_0)
+  #response variable
+  y_t_sim<- as.numeric(pred_sim %*% beta_star) + rnorm(200, mean=0, sd=1)
+  #LASSO regression
+  lasso_reg_sim<-cv.glmnet(
+    x=as.matrix(pred_sim),
+    y=y_t_sim,
+    type.measure="mse",
+    alpha=1,
+    nfolds=100,
+    family="gaussian", 
+    grouped=FALSE
+  )
+  beta_lasso_sim<-coef(lasso_reg_sim)
+  #LASSO error
+  lasso_errors[i]<-sqrt(sum((beta_lasso_sim[-1]-beta_star)^2))
 }
 mu_02_02<-mean(lasso_errors)
 mu_02_02
 ```
-Now that we have define the pipeline, we will able to generalised to the other cases amd for different number of observations
+Now that we have define the pipeline, we will able to generalised to the other 
+cases amd for different number of observations
 ```{r}
 K<-200
 n_mc<-100
@@ -314,8 +371,9 @@ for (i in seq_along(spctr_norm)) {
       A_coef <- diag(rho_A, K, K)
       two_upper_indx<- which(col(A_coef)== row(A_coef)+2, arr.ind = TRUE)
       # we sample gamma from a normal distribution
-      A_coef[ two_upper_indx] <- rnorm(nrow(two_upper_indx), mean = 0, sd = 2) #change here to have more var of VAR process
-
+      A_coef[ two_upper_indx] <- rnorm(nrow(two_upper_indx), mean = 0, sd = 2) 
+      #change here to have more var of VAR process
+      
       # we now scale to ensure that spectral measure is equal to what we need
       #we scale by the spectral radius which is common 0.2
       #we need to compute the sqrt of the max eigenvalue for (A^TA)
@@ -326,12 +384,12 @@ for (i in seq_along(spctr_norm)) {
       scalar<- sqrt(norm_A/rho_ATA)
       A_scaled<-A_coef * scalar
       
-
+      
       # Step 2: Simulate VAR(1) data with n = n_values[j] time steps
       pred_sim <- var_sim(A_scaled, nu = nu, Sigma_u = Cov_epsilon, 
                           nSteps = n, 
                           y0 = y_0)
-
+      
       # Step 3: Generate response
       y_t_sim <- as.numeric(pred_sim %*% beta_star) + rnorm(n, mean = 0,
                                                             sd = 3)
@@ -347,11 +405,11 @@ for (i in seq_along(spctr_norm)) {
         family = "gaussian",
         grouped = FALSE
       )
-  beta_lasso_sim <- coef(lasso_reg_sim, s = "lambda.min") 
-beta_hat <- as.numeric(beta_lasso_sim[-1])
-lasso_iter <- sqrt(sum((beta_hat - beta_star)^2))  # Store error  # Store error for this MC
+      beta_lasso_sim <- coef(lasso_reg_sim, s = "lambda.min") 
+      beta_hat <- as.numeric(beta_lasso_sim[-1])
+      lasso_iter <- sqrt(sum((beta_hat - beta_star)^2)) 
     } # end m loop
-
+    
     # Store the average error over Monte Carlo repetitions
     Lasso_error[i, j] <- mean(lasso_iter, na.rm = TRUE) 
     
@@ -391,13 +449,12 @@ beta_star[sample(1:K, nonzero)] <- runif(nonzero,2,3)
 for (i in seq_along(spctr_norm)) {
   # i is the index; norm_A is the target spectral measure for this row
   norm_A <- spctr_norm[i]
-    
-    for (j in seq_along(n_values)) {
+  
+  for (j in seq_along(n_values)) {
     n <- n_values[j]
     lasso_iter <- rep(NA, n_mc) 
     
-    # we first generate a diagonal A matrix
-    # (we will re-fill the two-upper band inside the MC loop so each MC draw differs)
+    
     
     for (m in 1:n_mc) {
       # compute the index for the two-upper triangular
@@ -405,12 +462,12 @@ for (i in seq_along(spctr_norm)) {
       two_upper_indx<- which(col(A_coef)== row(A_coef)+2, arr.ind = TRUE)
       # we sample gamma from a normal distribution
       A_coef[ two_upper_indx] <- rnorm(nrow(two_upper_indx), mean = 0, sd = 2)
-      A_scaled <- scaled_A_matrix(A_coef, target = target_norm)
+      A_scaled <- scaled_A_matrix(A_coef, target = norm_A)
       
       pred_sim <- var_sim(A_scaled, nu = nu, Sigma_u = Cov_epsilon, 
                           nSteps = n, 
                           y0 = y_0)
-    
+      
       # Step 3: Generate response
       y_t_sim <- as.numeric(pred_sim %*% beta_star) + rnorm(n, mean = 0,
                                                             sd = 3)
@@ -426,22 +483,22 @@ for (i in seq_along(spctr_norm)) {
         family = "gaussian",
         grouped = FALSE
       )
-     beta_lasso_sim <- coef(lasso_reg_sim, s = "lambda.1se") 
-    beta_hat <- as.numeric(beta_lasso_sim[-1])
-    lasso_iter <- sqrt(sum((beta_hat - beta_star)^2))  # Store error  # Store error for this MC
+      beta_lasso_sim <- coef(lasso_reg_sim, s = "lambda.1se") 
+      beta_hat <- as.numeric(beta_lasso_sim[-1])
+      lasso_iter <- sqrt(sum((beta_hat - beta_star)^2)) 
     } # end m loop
-
+    
     # Store the average error over Monte Carlo repetitions
     Lasso_error[i, j] <- mean(lasso_iter, na.rm = TRUE) 
     
   } # end j loop
 } # end i loop
-  
+
 Lasso_error
 ```
-#plot values 
+## Visualisation 
 
-```{r}
+```{r,warning=FALSE}
 # Convert matrix to data frame and tidy it
 Lasso_error_df <- as.data.frame(Lasso_error, stringsAsFactors = FALSE)
 Lasso_error_df$alpha_rho <- rownames(Lasso_error_df)
@@ -458,11 +515,11 @@ Lasso_error_long <- Lasso_error_df %>%
 color_palette <- c(
   "(0.2,0.2)"   = "black",
   "(0.2,0.92)"  = "red",
-  "(0.2,0.96)"  = "blue",
-  "(0.2,1)"     = "green",
-  "(0.2,1.01)"  = "orange",
-  "(0.2,1.02)"  = "purple",
-  "(0.2,1.03)"  = "cyan"
+  "(0.2,0.96)"  = "grey",
+  "(0.2,1)"     = "purple",
+  "(0.2,1.01)"  = "cyan",
+  "(0.2,1.02)"  = "#FA008F",
+  "(0.2,1.03)"  = "yellow"
 )
 
 line_types <- c(
@@ -483,7 +540,7 @@ g <- ggplot(
   geom_line(aes(color=factor(alpha_rho), linetype=factor(alpha_rho)), size=0.5) + 
   scale_color_manual(
     values = color_palette
-  
+    
   ) +
   scale_linetype_manual(
     values = line_types,  
@@ -492,12 +549,13 @@ g <- ggplot(
     x="n",
     y=TeX("$\\|\\hat{\\beta}- \\beta^*\\|_2$"),
     color = TeX("$\\rho(A),\\,\\|A\\|_2$")  
-    )+
-    theme_minimal()+
+  )+
+  expand_limits(x=700)+
+  theme_minimal()+
   theme(
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-        # make sure axes lines are visible
+    # make sure axes lines are visible
     axis.line = element_line(colour = "black", linewidth = 0.5),
     axis.ticks = element_line(colour = "black"),
     
@@ -507,28 +565,30 @@ g <- ggplot(
     # move legend to top-right
     legend.position = c(0.98, 0.98),
     legend.justification = c("right", "top"),
-   
+    
     legend.key.size = unit(0.5, 'cm'),
     legend.key.width = unit(0.5, 'cm'),
     legend.title = element_text(size=8),
     # make legend text a bit smaller
     legend.text = element_text(size = 6)
   )+
-   guides(linetype = "none")
-g
+  guides(linetype = "none")
+
 ```
 
-#Second Graphs
+#Exercise 2
+
 for the second graph we have the following situation:
 $$
-\text{VAR}(2)= X_j^t=2\alpha X_{j-1}^t-\alpha^2X_{j-2}^t + \xi^t
+  \text{VAR}(2)= X_j^t=2\alpha X_{j-1}^t-\alpha^2X_{j-2}^t + \xi^t
 $$
-We assume there is no cross-dependence, and the number of predictors is 500. 
+  
+  We assume there is no cross-dependence, and the data is centered. and the number of predictors is 500. 
 To ensure that $\Gamma_X(0)=1$, we need to compute the covariance matrix for the residuals as follow. 
 We consider the definition of Autocovariance of Stable VAR(p) process from \cite{Helmut2005}, in particular the \textit{Yule-Walker equations}:
-
-$$
-\Gamma_Y(0)=\textbf{A}\Gamma_Y(0)\textbf{A}^T + \Sigma_V, \ \text{where} \\\
+  
+  $$
+  \Gamma_Y(0)=\textbf{A}\Gamma_Y(0)\textbf{A}^T + \Sigma_V, \ \text{where} \\\
 A= \begin{bmatrix}
 A_1 & A_2 \\
 I_K & 0
@@ -537,123 +597,232 @@ I_K & 0
 0 & 0
 \end{bmatrix}
 $$
-In our case, we assume that $\Gamma_X(0)=I_K$, so we can rearrange the previous function as follow:
+  In our case, we assume that $\Gamma_X(0)=I_K$, so we can rearrange the previous function as follow:
+  $$
+  \Sigma_V=I_{Kp} - A \Gamma_Y(0) A^T = I_{Kp} - A A^T
 $$
-\Sigma_V=I_{Kp} - A \Gamma_Y(0) A^T = I_{Kp} - A A^T
+  Unfortunately, for values closer to $\alpha$, the covariance matrix wont be positive definitive, but we could rely on the fact that there is no cross-dependence, implying that the autocovariance is determined by the scaled residual variance. 
+We considered the VAR(1) representation of the VAR(2) process:
 $$
-Unfortunately, for values closer to $\alpha$, the covariance matrix wont be positive definitive, therefore we will use numerical methods to approximate 
-Sigma_u. 
-$$
-\begin
-$$
-In this scenario, the assumption $ = \||A \|<1$ is not applicabale: 
+  X_t=\alpha_iX_{t-1 } +\xi_t
 $$
 \begin{align*}
-  \|A\| &= \sqrt{\lambda_{max}(A^TA)}, \quad  \text{where} \quad A \
-  \text{is the companion matrix}\\
-  &= \begin{bmatrix}
-    A_1 & A_2 \\
-    I_K & 0
-  \end{bmatrix} \\
-  &= \begin{bmatrix}
-    2\alpha I_K & \alpha^2 I_K \\
-    I_K & 0
-  \end{bmatrix} \\
+\xi_t &=X_t-2\alpha X_{t-1}+\alpha^2X_{t-2}\\
+&=\underbrace{(1-2\alpha +\alpha^2L^2)}_{(1-\alpha L)^2}X_t \ && \text{where} \ L=\text{Lag Operator}\\
+X_t& =(1-\alpha L)^{-2}X_t\\
+(1-\alpha L)^{-2}&= \left[\sum_{j=0}^{\infty}(\alpha L)^j\right]^2\\
+&=\sum_{j=0}^{\infty}(j+1)(\alpha L)^j \\
+X_t&=\underbrace{\sum_{j=0}^{\infty}(j+1)(\alpha )^j \xi_{t-j}}_{\text{Wold Representation}}\\
+\Gamma_X(0)=\text{Var}(X_t)&=\sigma_{\xi} \underbrace{\sum_{j=0}^{\infty}(j+1)^2(\alpha)^j}_{(m^2-2m+1)r^m} 
+&&\sum_{j=0}^{\infty}r^m=\frac{1}{1-r}        \\
+\sum_{j=0}^{\infty}mr^{m-1}&= \frac{1}{(1-r)^2} \rightarrow mr^m=\frac{r}{(1-r)^2} 
+&& \sum_{j=0}^{\infty}m^2r^m=\frac{r+r^2}{(1-r)^3}    \\
+\underbrace{\Gamma_X(0)}_{\mathbb{I}}&= \sigma_{\xi}\frac{(1+\alpha^2)}{(1-\alpha^2)^3}\\
+\sigma_{\xi}&=\frac{(1-\alpha^2)^3}{(1+\alpha^2)}\mathbb{I}&& \\
 \end{align*}
-$$
 
 ```{r}
-#we frist define the function too compute the VAR(2) process
-#, 
-#  1600
-#c(0.1, 0.3, 0.5, 0.6, 0.7, 0.8, 0.95)
-#c(c(200, 400, 700, 1000,1300, 1500))
-alpha<-0.3
-n_values<-1500
-K<-500
-n_mc<-10
-Lasso_error_ex_2<-matrix(NA,nrow=length(alpha), ncol=length(n_values))
-colnames(Lasso_error_ex_2)<-as.character(n_values)
-rownames(Lasso_error_ex_2)<-as.character(alpha)
+#we start listing all constant and paramters 
+alpha <- c(0.1, 0.3, 0.5,0.6, 0.7, 0.8, 0.9, 0.95)
+n_values <- c(200, 400, 700, 1000, 1300, 1500)
+K <- 500
+n_mc <- 50
 
-#fixed initial values to generate VAR(1) dat
 nu <- rep(0, K)
-x_0 <- rep(0, K*2)
+x_0 <- rep(0, K * 2)
 
-#we generate sparse coef matrix for the stochastic process
-set.seed(2025)  
-beta_star_fixed <- numeric(2 * K)
-  nonzero_first_lag  <- round(K * 0.4)
-  nonzero_second_lag <- round(K * 0.4)
-  beta_star_fixed[sample(1:K, nonzero_first_lag)] <- runif(nonzero_first_lag, 2, 3)
-  beta_star_fixed[sample((K + 1):(2 * K), nonzero_second_lag)] <- runif(nonzero_second_lag, 2, 3)
+# we set sparsity in the true beta for both 
+nonzero_first_lag  <- round(K * 0.4)
+nonzero_second_lag <- round(K * 0.4)
+#store lasso error
+Lasso_error_ex_2<-matrix(NA,nrow=length(alpha), ncol=length(n_values))
 
-#we define the true coef. matrix for the stochastic process
-    for(k in seq_along(alpha)){
-      #we first compute the Sigma_V as previously described
-      alpha_i<-alpha[k]
-      
-      S<-(1+alpha_i)^2/(1-alpha_i^2)^3
-      sigma_2<- 1/S
-      #now we compute Sigma_V
-      Sigma_V<-diag(sigma_2, nrow=K, ncol=K)
-      
-      #to compute predictors, we will compute VAR(2) as a VAR(1), as described 
-      #in Hamilton(1995)
-      
-      A1 <- diag(2* alpha,K,K) #no cross-sectional dependence
-      A2<-diag(-(alpha^2),K,K)
-      AA <- cbind(A1, A2)
-      
-      #compute companion matrix 
-      AA_comp<-comp_mtrx(AA,2)
-      
-    for(j in 1:length(n_values)){
-      n<- n_values[j]
-    lasso_iter <- rep(NA, n_mc)
-    for(i in 1:n_mc){  
-    X_t <- matrix(0, nrow = n, ncol = 2 * K)  # trajectories matrix nSteps x Kp
-      X_t[1, ] <- x_0  # add initial value to initiate the simulation
-
-      # Generate noise
+for(a_idx in seq_along(alpha)) {
+  alpha_i <- alpha[a_idx]
+  
+  S <- (1 + alpha_i)^2 / (1 - alpha_i^2)^3
+  sigma_2 <- 1 / S
+  Sigma_V <- diag(sigma_2, nrow = K, ncol = K)
+  
+  A1 <- diag(2 * alpha_i, K, K)
+  A2 <- diag(-(alpha_i^2), K, K)
+  AA <- cbind(A1, A2)
+  AA_comp <- comp_mtrx(AA, 2)
+  
+  if(max(abs(eigen(AA_comp, only.values = TRUE)$values)) >= 1) {
+    warning("Alpha ", alpha_i, ": companion matrix spectral radius >= 1 (process may be unstable)")
+  }
+  
+  for(n_idx in seq_along(n_values)) {
+    #check how long it takes for each loop 
+    start_time <- Sys.time()
+    n <- n_values[n_idx]
+    
+    errs <- numeric(n_mc)
+    nnz  <- integer(n_mc)
+    tol_level_vec <- numeric(n_mc)
+    
+    
+    #we generate the true parameters for the stochastic regression
+    set.seed(2025)                         
+    beta_star <- numeric(2 * K)
+    beta_star[sample(1:K, nonzero_first_lag)] <- runif(nonzero_first_lag, 2, 3)
+    beta_star[sample((K + 1):(2 * K), nonzero_second_lag)] <- runif(nonzero_second_lag, 2, 3)
+    
+    for(mc in 1:n_mc) {
+      # simulate X_t for this MC iteration
+      X_t <- matrix(0, nrow = n, ncol = 2 * K)
+      X_t[1, ] <- x_0
       noise <- mvrnorm(n = n, mu = rep(0, K), Sigma = Sigma_V)
-
-      # Simulation loop
-      for (t in 2:n) {
-      X_t[t, ] <- AA_comp %*% X_t[t-1, ]
-      X_t[t, 1:K] <- X_t[t, 1:K] + nu + noise[t, ]
+      #VAR(1) process
+      for(t in 2:n) {
+        X_t[t, ] <- AA_comp %*% X_t[t - 1, ]
+        X_t[t, 1:K] <- X_t[t, 1:K] + nu + noise[t, ]
       }
       
-      #we generate beta_star
-      beta_star <- matrix(0, 2 * K)
-      nonzero_first_lag <- round(K * 0.4)
-      nonzero_second_lag <- round(K * 0.4)
-      beta_star[sample(1:K, nonzero_first_lag)] <- runif(nonzero_first_lag, 2, 3)
-      beta_star[sample((K + 1):(2 * K), nonzero_second_lag)] <- runif(nonzero_second_lag, 2, 3)
-
-      beta_star <- as.numeric(beta_star)
-  
       y_t_sim <- as.numeric(X_t %*% beta_star) + rnorm(n, mean = 0, sd = 3)
-      #we asssume normality of the error term
-      # Step 4: Fit LASSO
+      
       lasso_reg_sim <- cv.glmnet(
         x = as.matrix(X_t),
-        y = as.matrix(y_t_sim),
-        intercept=FALSE,
-        alpha = 1,
-        nfolds = 5, 
+        y = as.numeric(y_t_sim),
+        intercept = FALSE, #we remove the intercept as we have 
+        #nu=0 in the original model.
+        alpha = 1, #this ensure we applied a LASSO regerssion
+        nfolds = 10,
         grouped = FALSE
       )
-    beta_lasso_sim <- coef(lasso_reg_sim, s = "lambda.min") 
-    beta_hat <- as.numeric(beta_lasso_sim[-1])
-lasso_iter[i] <- sqrt(sum((beta_hat - beta_star)^2))
+      
+      coef_hat <- as.numeric(coef(lasso_reg_sim, s = "lambda.min")[-1])
+      errs[mc] <- sqrt(sum((coef_hat - beta_star)^2))
+      
+      
+    } # end MC loop
+    end_time <- Sys.time()
+    elapsed <- round(as.numeric(difftime(end_time, start_time, units = "mins")), 2)
+    valid_errs <- errs[!is.na(errs)]
+    Lasso_error_ex_2[ a_idx,n_idx]<-mean(valid_errs, na.rm = TRUE)
+    cat("alpha=", alpha_i, " n=", n, " MC valid=", length(valid_errs),
+        " median_err=", round(median(valid_errs, na.rm = TRUE), 4),
+        " mean_err=", round(mean(valid_errs, na.rm = TRUE), 4),
+        " sd=", round(sd(valid_errs, na.rm = TRUE), 4), "\n")
     
-    }
-    Lasso_error_ex_2[k, j] <- mean(lasso_iter, na.rm = TRUE) 
-   }
-  }
-Lasso_error_ex_2
+    cat("  quantiles (0.1,0.25,0.5,0.75,0.9): ",
+        paste(round(quantile(valid_errs, probs = c(.1, .25, .5, .75, .9),
+                             na.rm = TRUE), 3), collapse = ", "), "\n")
+    
+    cat("Execution time for each (alpha,n) combination", elapsed)
+    
+    
+  } # end n_values loop
+  
+} # end alpha loop
 
 ```
 
+```{r, warning=FALSE}
+#Convert names from the graph
+colnames(Lasso_error_ex_2)<-as.character(n_values)
+rownames(Lasso_error_ex_2)<-as.character(alpha)
+# Convert matrix to data frame and tidy it
+Lasso_error_df2 <- as.data.frame(Lasso_error_ex_2, stringsAsFactors = FALSE)
+Lasso_error_df2$alpha <- rownames(Lasso_error_df2)
+
+Lasso_error_long <- Lasso_error_df2 %>%
+  pivot_longer(
+    cols = -c(alpha),  
+    names_to = "n_obs",
+    values_to = "Lasso_Error"
+  ) %>%
+  mutate(n_obs = as.integer(n_obs))
+
+# Define color and linetype palettes
+color_palette <- c(
+  "0.1"   = "black",
+  "0.3"  = "red",
+  "0.5"  = "grey",
+  "0.6"     = "purple",
+  "0.7"  = "cyan",
+  "0.8"  = "#FA008F",
+  "0.90"  = "yellow",
+  "0.95"  = "blue"
+)
+
+line_types <- c(
+  "0.1"   = "solid",
+  "0.3"  = "dashed",
+  "0.5"  = "dashed",
+  "0.6"     = "dotdash",
+  "0.7"  = "dotdash",
+  "0.8"  = "dotdash",
+  "0.90"  = "dotdash",
+  "0.95"  ="solid"
+)
+
+# Plot
+p <- ggplot(
+  data = Lasso_error_long,
+  mapping = aes(x = n_obs, y = Lasso_Error)
+) +
+  geom_line(aes(color=factor(alpha), linetype=factor(alpha)), size=0.5) + 
+  scale_color_manual(
+    values = color_palette
+    
+  ) +
+  scale_linetype_manual(
+    values = line_types,  
+  ) + 
+  scale_x_continuous(breaks=seq(0,1600, by=400))+
+  scale_y_continuous(breaks = seq(0,60, by=10))+
+  expand_limits(x=1700)+
+  labs(
+    x="n",
+    y=TeX("$\\|\\hat{\\beta}- \\beta^*\\|_2$"),
+    color = TeX("$\\alpha$")  
+  )+
+  theme_minimal()+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    # make sure axes lines are visible
+    axis.line = element_line(colour = "black", linewidth = 0.5),
+    axis.ticks = element_line(colour = "black"),
+    
+    # add full black border around the plot panel
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8),
+    
+    # move legend to top-right
+    legend.position = c(0.98, 0.98),
+    legend.justification = c("right", "top"),
+    
+    legend.key.size = unit(0.5, 'cm'),
+    legend.key.width = unit(0.5, 'cm'),
+    legend.title = element_text(size=8),
+    
+    legend.text = element_text(size = 6),
+    
+    
+  )+
+  guides(linetype = "none")
+
+```
+
+```{r}
+#combine graphs 
+gp<-grid.arrange(g,p,nrow=2)
+gp
+```
+On the top figure,  there exhist a cross-sectional dependence defined by the 
+VAR coefficient vectors. We saw at the beginning of the report that the 
+functional dependence scale is of the same order as $\rho(A)$, implying that 
+$\theta \leq c \cdot \rho(A)$ with sufficiently large n. In the picture however
+we see that even though we fixed $\rho(A)$, by increasing l2 norm of A 
+the estimation error decreases more slowly with increasing sample size n. 
+This indicates that the estimation error is sensitive to the magnitude of the 
+coefficients in the matrix A. Potentially A can slightly exceed 1 as well.
+
+On the second example we have a situation that in some cases the assumption
+$\| A\|<1$ might not hold. Assmuing that there is no cross-dependence, the graph
+shows different convergence speeds depending on $\alpha$, even though all processes are
+stable.We notice that for certain level of alpha, we have that with large sample 
+size, the effect of dependence is significantly reduced. 
 
