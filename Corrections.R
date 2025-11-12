@@ -170,7 +170,7 @@ sum_sqrt<-colSums(abs(X_t)^2)/n_Steps # column normalised
 sum_sqrt<-sum_sqrt/(sqrt(n_Steps)) # column normalised
 Sigma_x<-max(sum_sqrt)
 C<-seq(0,10,0.2)
-lambda_n<-sapply(C, function(c)(c*sigma*Sigma_x*sqrt(log(K)/n_Steps)))
+lambda_n<-sapply(C, function(c)(2*(c*sigma*Sigma_x*sqrt(log(K)/n_Steps))))
 
 #we compute the best C by out-of-sample
 train_n<-round(n_Steps*0.7)
@@ -304,7 +304,8 @@ lasso_iter
   
         
         
-        lambda_n <- sapply(C, function(c) (c * sigma * Sigma_x *sqrt(log(K) / train_n)))
+        lambda_n <- sapply(C, function(c) (2*(c * sigma * Sigma_x *
+                                                sqrt(log(K) / train_n))))
         
         # fit on training for all lambdas
         lasso_reg_C <- glmnet(
@@ -456,8 +457,8 @@ lasso_iter
 #For this simulation, we keep the dependence structure unchanged, by fixing 
 #dependence parameter
 #single value simulation
-p<-512
-n<-1150
+p<-1024
+n<-100
 X_t<-matrix(NA_real_, n+3, p)
 X_t[1:2,]<-0
 
@@ -498,7 +499,7 @@ SNR_target <- 1.2
 # Here we use the average per-scalar variance of eps_t_trim as the noise variance sigma_e^2
 sigma_noise2 <- mean(eps_t^2)   # scalar
 
-# --- scale beta so ||beta||_2^2 = SNR_target * sigma_noise2 (because Gamma_X(0)=I) ---
+# --- scale beta so ||beta||_2^2 = SNR_target * sigma_noise2 (because Gamma_X(0)=I) 
 beta_norm2_current <- sum(beta_star^2)
 
 beta_norm2_target <- SNR_target * sigma_noise2
@@ -614,9 +615,164 @@ for (p_index in seq_along(p_values)) {
     lasso_error[p_index, j] <- avg_coef
   }
 }
+save(lasso_error, file="6.1.RData")
+Lasso_error_df <- as.data.frame(lasso_error, stringsAsFactors = FALSE)
 
-#save datafrane
-##True sparse estimator beta
-###k = \sqrt{p} non-zero coefficients
-###Signal-to-noise ratio is 1.2
-beta_star<-as
+# if rownames are numeric p-values, make them explicit as alpha label
+Lasso_error_df$alpha <- rownames(Lasso_error_df)
+
+# pivot to long format
+Lasso_error_long <- Lasso_error_df %>%
+  pivot_longer(
+    cols = -alpha,
+    names_to = "n_obs",
+    values_to = "Lasso_Error"
+  ) %>%
+  mutate(
+    n_obs = as.integer(n_obs),
+    alpha = factor(alpha, levels = unique(alpha))   # ensure preserved order
+  )
+
+# ---- build color & linetype palettes automatically to match alpha levels
+alpha_levels <- levels(Lasso_error_long$alpha)
+k <- length(alpha_levels)
+
+color_palette <- c(
+  "128"   = "black",
+  "256"     = "purple",
+  "512"  = "gold2",
+  "1024"  = "blue"
+)
+
+line_types <- c(
+  "128"   = "solid",
+  "256"  = "dotdash",
+  "512"  = "dotdash",
+  "1024"  = "dotdash",
+)
+
+ymin <- min(Lasso_error_long$Lasso_Error, na.rm = TRUE)
+ymax <- max(Lasso_error_long$Lasso_Error, na.rm = TRUE)
+y_breaks <- pretty(c(ymin, ymax), n = 6)
+
+# ---- plot
+q <- ggplot(
+  data = Lasso_error_long,
+  mapping = aes(x = n_obs, y = Lasso_Error, group = alpha)
+) +
+  geom_line(aes(color = alpha, linetype = alpha), size = 0.9) +
+  scale_color_manual(values = color_palette, breaks = names(color_palette)) +
+  scale_linetype_manual(values = line_types, breaks = names(line_types)) +
+  geom_point(aes(color = alpha), size = 1.2) +
+  scale_color_manual(values = palette_colors, name = TeX("$p$ (variables)")) +
+  scale_linetype_manual(values = linetype_vec, name = NULL) +
+  scale_x_continuous(
+    breaks = seq(min(Lasso_error_long$n_obs, na.rm = TRUE),
+                 max(Lasso_error_long$n_obs, na.rm = TRUE),
+                 by = 100),
+    expand = expansion(mult = c(0.02, 0.02))
+  ) +
+  scale_y_continuous(breaks = y_breaks) +
+  labs(
+    x = "n (number of observations)",
+    y = TeX("$\\|\\hat{\\beta} - \\beta^*\\|_2$"),
+    color = TeX("$p$ (variables)")
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(colour = "black", size = 0.5),
+    axis.ticks = element_line(colour = "black"),
+    panel.border = element_rect(colour = "black", fill = NA, size = 0.6),
+    legend.position = c(1, 1),
+    legend.justification = c("right", "top"),
+    legend.key.size = unit(0.5, "cm"),
+    legend.key.width = unit(0.7, "cm"),
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 7)
+  ) +
+  guides(color = guide_legend(override.aes = list(linetype = linetype_vec, size = 1.1)),
+         linetype = "none")  # hide duplicate linetype legend entry
+
+# Show plot
+q
+
+#Exercise 6.2--------------------------------------------
+##define functions
+### autocovariance matrix from equation 2.1.32 Lukpol
+#(I_K^2- A_1 \otimes A_1)^-1 vec(Sigma_u)  
+Gamma_y_0<-function(A1, K, Sigma_u){
+  I_k2<-diag(1, K^2)
+  A_o_A<-kronecker(A1, A1)
+  vec_Gamma_0<-solve(I_k2 - A_o_A)%*%as.vector(Sigma_u)
+  #now convert back to matrix form
+  var_mtrx<-matrix(vec_Gamma_0, nrow=K, ncol=K)
+}
+## Lasso regression
+
+## Small VAR  
+
+p_a<-10
+d_a<-1
+T_a<-c(30,50)
+rho<-c(0.5,0.7,0.9)
+
+#### Define the transaction Matrix 
+set.seed(345)
+non_0<-round(0.05 * p_a^2)
+element_ii<-runif(p_a, -1,1)
+A1_ii<-diag(element_ii)
+
+#### Define the non-diagonal elements
+A1_od<-matrix(0, nrow=p_a, ncol=p_a)
+off_diag<-which(row(A1_od)!= col(A1_od))
+random<-sample(off_diag, size=non_0, replace = FALSE)
+
+A1_od[random] <- runif(non_0, min = -0.1, max = 0.1)
+A1_od
+A1<-A1_ii + A1_od
+View(A1)
+#ensure that the process this stable by normalising A1
+prod<-t(A1)%*%A1
+norm_A1<-max(eigen(prod)$values)
+A1<-(A1 / (norm_A1))*0.90
+max(eigen(A1)$values) ## 0.9
+### Sigmas - we try for a fixed dependence matrix
+
+Sigma_I<-diag(1, p_a)
+Sigma_I[which(col(Sigma_I)!= row(Sigma_I) & col(Sigma_I)<= round(p_a/2))]<-0.5
+#
+Sigma_II<-diag(1, p_a)
+Sigma_II[which((Sigma_II!= row(Sigma_I) & col(Sigma_I)<= round(p_a/2)) 
+         | round(p_a/2)<= row(Sigma_II))]<-0.5
+Sigma_II
+Sigma_III
+####ensure now that SNR is fixed
+varX_0<-Gamma_y_0(A1, p_a, diag(1, p_a))
+
+
+
+#### Off-diagonal 
+
+#### We use sample() function to select randomly some off diagonal values
+
+
+
+#### select randomly off diago
+
+### Medium VAR
+p_b<-50
+d_b<-1
+T_b<-c(80,120,160)
+
+#Define the function for
+
+
+
+
+## OLS Estimation
+
+## Ridge Regression
+
+## Comparison
