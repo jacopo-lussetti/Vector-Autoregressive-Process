@@ -500,9 +500,7 @@ sigma_noise2 <- mean(eps_t^2)   # scalar
 
 # --- scale beta so ||beta||_2^2 = SNR_target * sigma_noise2 (because Gamma_X(0)=I) ---
 beta_norm2_current <- sum(beta_star^2)
-if (beta_norm2_current == 0) {
-  stop("beta_star is zero vector; set at least one non-zero coefficient first.")
-}
+
 beta_norm2_target <- SNR_target * sigma_noise2
 c_scale <- sqrt(beta_norm2_target / beta_norm2_current)
 beta_star <- beta_star * c_scale
@@ -522,38 +520,102 @@ beta_hat <- as.numeric(beta_lasso_sim[-1])
 lasso_error <- sqrt(sum((beta_hat - beta_star)^2))
 lasso_error
 
-# All cmbinations-----------------------------------------------------
-  p_value<-c(128,264,512,1024) # number of variables
-n_values<-c(250,350,450,550,650,850,1150,1350,1750,2000) #number of observations
+# All combinations-----------------------------------------------------
+p_values <- c(128, 264, 512, 1024)  # Number of variables
+n_values <- c(250, 350, 450, 550, 650, 850, 1150, 1350, 1750, 2000)  # Number of observations
 
-#Initial values
+iter <- 50  # Number of iterations for the MC simulation
 
-X_t[1,]<-rep(0, p) 
+# Storage for lasso errors
+lasso_error <- matrix(NA_real_, nrow = length(p_values), ncol = length(n_values))
+colnames(lasso_error) <- as.character(n_values)
+rownames(lasso_error) <- as.character(p_values)
 
-iter<- #number of iteration for the MC simulation
-for( p in seq_along(p_value)){
-  for(j in seq_along(n_values)){  
-    n<-n_values[j]
-    X_t<-matrix(NA_real_,nrow=n, ncol= p)
-    X_t[t,]<-0 #we assume that the model is stationary, therefore the 
-    #initial value is 0
-    #rescaled sample
-    for( i in 1:iter){
-        set.seed(100+i)
-      #MA component
-      #nu is the white noise
-      wn<-mvrnorm(n=n+2, mu=seq(0, p),Sigma = diag(1,p)) #white noise
-      eps_t[t,]<-wn[t,] - 0.8 * wn[t-1,] + 0.16 * wn[t-2,]
-      
-      #AR component
-      
-      #generate white noise
-      X_t<-1.2*X_t[(t-1),]- 0.36 * X_t[(t-2),] + eps_t[t]
+start_time <- Sys.time()
 
-    }
-  }
+for (p_index in seq_along(p_values)) {
+  p <- p_values[p_index]
+  cat("Starting simulations for p =", p, "\n")
   
+  Sigma_nu <- diag(1, p)
+  
+  for (j in seq_along(n_values)) {
+    n <- n_values[j]
+    cat("  n =", n, "\n");
+    
+    # Define the matrices
+    X_t <- matrix(NA_real_, nrow = n + 3, ncol = p)
+    X_t[1:2, ] <- 0  # Initial values
+    
+    # Create matrix for residuals
+    eps_t <- matrix(NA_real_, nrow = n + 3, ncol = p)
+    
+    results_n <- numeric(iter)  # Initialize results_n as a numeric vector
+    
+    for (i in 1:iter) {
+      set.seed(100 + i)
+      
+      # White noise component
+      wn <-   mvrnorm(n = n + 3, mu = rep(0, p), Sigma = Sigma_nu)
+      
+      
+      # Compute the ARMA model
+      for (tt in 3:(n + 3)) {
+        
+        eps_t[tt, ] <- wn[tt, ] - 0.8 * wn[(tt - 1), ] + 0.16 * wn[(tt - 2), ]
+        X_t[tt, ] <- 1.2 * X_t[(tt - 1), ] - 0.36 * X_t[(tt - 2), ] + eps_t[tt, ]
+      }
+      
+      # Remove the first two observations to avoid the effect of initial values
+      eps_obs <- eps_t[-c(1, 2, 3), , drop = FALSE]
+      X_obs <- X_t[-c(1, 2, 3), , drop = FALSE]
+      
+      # Compute the sparse true parameter matrix
+      beta_star <- rep(0, p)
+      non_0 <- round(sqrt(p))
+      non_zero_indices <- sample(1:p, non_0)
+      
+      # Set the non-zero coefficients
+      beta_star[non_zero_indices] <- rnorm(non_0, mean = 0, sd = 0.5)
+      
+      # Rescale beta to ensure that SNR is 1.2
+      SNR_target <- 1.2
+      sigma_noise2 <- mean(eps_obs^2)  # scalar
+      
+      beta_norm2_current <- sum(beta_star^2)
+
+      
+      beta_norm2_target <- SNR_target * sigma_noise2
+      c_scale <- sqrt(beta_norm2_target / beta_norm2_current)
+      beta_star <- beta_star * c_scale
+      
+      # Generate response
+      y_t <- as.numeric(X_obs %*% beta_star + rnorm(n, mean = 0, sd = sqrt(sigma_noise2)))
+      
+      lambda_np <- sqrt(log(p) / n)
+      lasso_reg <- 
+        glmnet(
+          x = as.matrix(X_obs),
+          y = as.numeric(y_t),
+          family = "gaussian",
+          intercept = FALSE,
+          alpha = 1,
+          lambda = lambda_np
+        )
+  
+      
+      # Extract estimates
+      cf <- as.vector(coef(lasso_reg, s = lambda_np))
+      beta_hat <- as.numeric(cf[-1])
+      results_n[i] <- sqrt(sum((beta_hat - beta_star)^2))
+    }
+    
+    avg_coef <- mean(results_n, na.rm = TRUE)
+    lasso_error[p_index, j] <- avg_coef
+  }
 }
+
+#save datafrane
 ##True sparse estimator beta
 ###k = \sqrt{p} non-zero coefficients
 ###Signal-to-noise ratio is 1.2
